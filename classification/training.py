@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 from model import MyResNet
+from torch.utils.data import DataLoader, Dataset, random_split
+from preprocessing import SoundDS 
 
 USE_GPU = True
 dtype = torch.float32 
@@ -69,7 +71,7 @@ def train_part(model, optimizer, epochs=1):
                 print('Epoch: %d, Iteration %d, loss = %.4f' % (e, t, loss.item()))
         check_accuracy(loader_val, model)
                 
-if __name__== "main":
+if __name__== "__main__":
 
     # load data
     train_ds = torch.load("train_data.pt")
@@ -79,6 +81,7 @@ if __name__== "main":
     loader_train = torch.utils.data.DataLoader(train_ds, batch_size=16, shuffle=True)
     loader_val = torch.utils.data.DataLoader(val_ds, batch_size=16, shuffle=True)
     
+    print(next(iter(loader_train)))
     # define and train the network
     model = MyResNet()
     optimizer = torch.optim.Adamax(model.parameters(), lr=0.001, weight_decay=1e-7) 
@@ -86,7 +89,7 @@ if __name__== "main":
     params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print("Total number of parameters is: {}".format(params))
 
-    train_part(model, optimizer, epochs = 10)
+    # train_part(model, optimizer, epochs = 1)
 
-    # report test set accuracy
-    check_accuracy(loader_val, model, analysis=True)
+    # # report test set accuracy
+    # check_accuracy(loader_val, model, analysis=False)

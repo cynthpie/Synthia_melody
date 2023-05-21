@@ -24,28 +24,29 @@ class SoundDS(Dataset):
         waveform, sample_rate = torchaudio.load(audio_file)
         specgram = self.transform(waveform)
         return (specgram, label)
-    
-metadata_train = "/Users/chia-hsinlin/Documents/Imperial/individual_project/msc_project/tempsnd/metadata_train.csv"
-train_path = "/Users/chia-hsinlin/Documents/Imperial/individual_project/msc_project/tempsnd/train_data/"
-train_meta = pd.read_csv(metadata_train, sep='\t')
-train_ds = SoundDS(train_meta, train_path)
 
-metadata_test = "/Users/chia-hsinlin/Documents/Imperial/individual_project/msc_project/tempsnd/metadata_test.csv"
-test_path = "/Users/chia-hsinlin/Documents/Imperial/individual_project/msc_project/tempsnd/test_data/"
-test_meta = pd.read_csv(metadata_test, sep='\t')
-test_ds = SoundDS(test_meta, test_path)
+if __name__=="__main__":
+    metadata_train = "/Users/chia-hsinlin/Documents/Imperial/individual_project/msc_project/tempsnd/metadata_train.csv"
+    train_path = "/Users/chia-hsinlin/Documents/Imperial/individual_project/msc_project/tempsnd/train_data/"
+    train_meta = pd.read_csv(metadata_train, sep='\t')
+    train_ds = SoundDS(train_meta, train_path)
 
-# Random split of 80:20 between training and validation
-train_len = len(train_ds)
-num_train = round(train_len * 0.8)
-num_val = train_len - num_train
-train_ds, val_ds = random_split(train_ds, [num_train, num_val])
+    metadata_test = "/Users/chia-hsinlin/Documents/Imperial/individual_project/msc_project/tempsnd/metadata_test.csv"
+    test_path = "/Users/chia-hsinlin/Documents/Imperial/individual_project/msc_project/tempsnd/test_data/"
+    test_meta = pd.read_csv(metadata_test, sep='\t')
+    test_ds = SoundDS(test_meta, test_path)
+
+    # Random split of 80:20 between training and validation
+    train_len = len(train_ds)
+    num_train = round(train_len * 0.8)
+    num_val = train_len - num_train
+    train_ds, val_ds = random_split(train_ds, [num_train, num_val])
 
 
-# save data
-save_data = False
-if save_data:
-    torch.save(train_ds, "train_data.pt")
-    torch.save(val_ds, "val_data.pt")
-    torch.save(test_ds, "test_data.pt")
+    # save data
+    save_data = False
+    if save_data:
+        torch.save(train_ds, "train_data.pt")
+        torch.save(val_ds, "val_data.pt")
+        torch.save(test_ds, "test_data.pt")
     
