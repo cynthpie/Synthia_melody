@@ -4,7 +4,6 @@ import torch.nn.functional as F
 import math
 from model import MyResNet
 from torch.utils.data import DataLoader, Dataset, random_split
-from preprocessing import SoundDS 
 
 USE_GPU = True
 dtype = torch.float32 
