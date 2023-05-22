@@ -23,33 +23,34 @@ def load_data(datapath, metadata_path, transform=torchaudio.transforms.MelSpectr
     data = TensorDataset(features, labels)
     return data
 
-def write_metadata(train_path, test_path):
-    train_files = sorted([f for f in listdir(train_path) if isfile(join(train_path, f))])
-    train_label = [int(name[0].islower()) for name in train_files]
+def write_metadata(data_path):
+    files = sorted([f for f in listdir(data_path) if isfile(join(data_path, f))])
+    labels = [int(name[0].islower()) for name in train_files]
 
-    test_files = sorted([f for f in listdir(test_path) if isfile(join(test_path, f))])
-    test_label = [int(name[0].islower()) for name in test_files]
+    df = pd.DataFrame({'filename': files,
+                    'label': labels})
 
-    train_df = pd.DataFrame({'filename': train_files,
-                    'label': train_label})
-    test_df = pd.DataFrame({'filename': test_files,
-                    'label': test_label})
-
+    saved_path = "/rds/general/user/cl222/home/audio/metadata" ## CHANGE ME
+    df.to_csv(saved_path, sep='\t', index=False)
+    return None
+    
 
 if __name__=="__main__":
-    # train_data = torch.load("train_data.pt")
-    # val_data = torch.load("val_data.pt")
-    # test_data = torch.load("test_data.pt")
-    # print(len(train_data))
-    # print(len(val_data))
-    # print(len(test_data))
-    # print(test_data[0])
 
-    metadata_train = "/Users/chia-hsinlin/Documents/Imperial/individual_project/msc_project/tempsnd/metadata_train.csv"
-    train_path = "/Users/chia-hsinlin/Documents/Imperial/individual_project/msc_project/tempsnd/train_data/"
+    # Local path
+    #metadata_train = "/Users/chia-hsinlin/Documents/Imperial/individual_project/msc_project/tempsnd/metadata_train.csv"
+    #train_path = "/Users/chia-hsinlin/Documents/Imperial/individual_project/msc_project/tempsnd/train_data/"
 
-    metadata_test = "/Users/chia-hsinlin/Documents/Imperial/individual_project/msc_project/tempsnd/metadata_test.csv"
-    test_path = "/Users/chia-hsinlin/Documents/Imperial/individual_project/msc_project/tempsnd/test_data/"
+    #metadata_test = "/Users/chia-hsinlin/Documents/Imperial/individual_project/msc_project/tempsnd/metadata_test.csv"
+    #test_path = "/Users/chia-hsinlin/Documents/Imperial/individual_project/msc_project/tempsnd/test_data/"
+
+    # School path
+    train_path = "/rds/general/user/cl222/home/audio/train_data/"
+    metadata_train = "/rds/general/user/cl222/home/audio/metadata_train.csv"
+
+    test_path = "/rds/general/user/cl222/home/audio/test_data/"
+    metadata_test = "/rds/general/user/cl222/home/audio/metadata_test.csv"
+
 
     train_data = load_data(train_path, metadata_train)
     print("finish loading train data")
@@ -70,7 +71,17 @@ if __name__=="__main__":
         torch.save(val_ds, "val_data.pt")
         torch.save(test_data, "test_data.pt")
         print("finish saving data")
+
+    # train_data = torch.load("train_data.pt")
+    # val_data = torch.load("val_data.pt")
+    # test_data = torch.load("test_data.pt")
+    # print(len(train_data))
+    # print(len(val_data))
+    # print(len(test_data))
+    # print(test_data[0])
     
+
+
 # class SoundDS(Dataset):
 #     def __init__(self, df, data_path, transform=torchaudio.transforms.MelSpectrogram(sample_rate=44100, n_mels=16)):
 #         self.df = df
