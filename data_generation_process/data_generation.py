@@ -30,16 +30,16 @@ def wave_to_file(wav, wav2=None, fname="temp", amp=0.1, scale_type="major"):
         wav = np.stack([wav, wav2]).T
     if scale_type == "major":
         try:
-            wavfile.write("../../audio/major_24/{fname}.wav", SR, wav)
+            wavfile.write(f"../../audio/major_24/{fname}.wav", SR, wav)
         except FileNotFoundError:
             os.makedirs('../../audio/major_24/')
-            wavfile.write("../../audio/majorr_24/{fname}.wav", SR, wav)
+            wavfile.write(f"../../audio/majorr_24/{fname}.wav", SR, wav)
     elif scale_type == "minor": 
         try:
-            wavfile.write("../../audio/minor_24/{fname}.wav", SR, wav)
+            wavfile.write(f"../../audio/minor_24/{fname}.wav", SR, wav)
         except FileNotFoundError:
             os.makedirs('../../audio/minor_24/')
-            wavfile.write("../../audio/minor_24/{fname}.wav", SR, wav)
+            wavfile.write(f"../../audio/minor_24/{fname}.wav", SR, wav)
 
 def amp_mod(init_amp, env):
     return env * init_amp
@@ -120,7 +120,7 @@ def data_generation(scale_type="major", serial_nb = "0001", metadata_df=None):
         scale_name = random.sample(list(FREQ_LIST), k=1)[0]
         freq = FREQ_LIST[scale_name]
 
-    print("sampled freq: ", freq, '  scale_name: ', scale_name)
+    # print("sampled freq: ", freq, '  scale_name: ', scale_name)
 
     # get notes for scale
     first_note = freq
@@ -257,7 +257,7 @@ def data_generation(scale_type="major", serial_nb = "0001", metadata_df=None):
     return metadata_df
 
 if __name__ == "__main__":
-    nb_sample = 1
+    nb_sample = 1500
     metadata_df = pd.DataFrame()
     for i in range(1, nb_sample+1):
         metadata_df = data_generation(scale_type="major", serial_nb=f"{i:04d}", metadata_df=metadata_df)
