@@ -14,7 +14,7 @@ from synth.components.oscillators.oscillators import SineOscillator, SquareOscil
 from synth.components.envelopes import ADSREnvelope
 from synth.components.freqencymod import FrequencyModulator
 
-SR = 44100 # sample rate
+SR = 16000 # sample rate #16000
 
 #####################################################################
 # Helper functions
@@ -159,36 +159,66 @@ def data_generation(scale_type="major", serial_nb = "0001", metadata_df=None):
 
     # add more randomness in bass and root nodes
     i = random.randint(0, 2)
-    bass_begin = None
+    tenor_begin = None
     if i==0:
-        bass_begin = first_note
-        root_begin = third_note
+        tenor_begin = first_note # tenor
+        root_begin = third_note # bass
     else:
-        bass_begin = third_note
+        tenor_begin = third_note
         root_begin = first_note
-    bass_notes = [bass_begin]*len(sampled_notes2)
+    tenor_notes = [tenor_begin]*len(sampled_notes2)
     root_notes = [root_begin]*len(sampled_notes3)
     seventh_notes = [0.0]*len(sampled_notes4) # additional seventh note
 
     for i in range(len(sampled_index)):
-        # construct minor second or major five
-        if (sampled_index[i] == 1 or sampled_index[i] == 5):
-            coin = np.random.randint(0,3)
-            bass_notes[i] = (sixth_note, fourth_note, seventh_note)[coin]
-            root_notes[i] = (second_note, second_note, fifth_note)[coin]
         # construct minor six, major one (weight twice), major forth
         if (sampled_index[i]==0):
             coin = np.random.randint(0,4)
-            bass_notes[i] = (third_note, fifth_note, fifth_note, sixth_note)[coin]
-            root_notes[i] = (sixth_note, third_note, third_note, fourth_note)[coin]
-            seventh_notes[i] = (fifth_note, seventh_note, rest, third_note)[coin]
-            coinb = np.random.randint(0,2)
-            seventh_notes[i] = (rest, seventh_notes[i])[coinb]
+            tenor_notes[i] = (third_note, fifth_note, third_note, sixth_note)[coin] # increase chance of first
+            root_notes[i] = (sixth_note, third_note, fifth_note, fourth_note)[coin]
+            # seventh_notes[i] = (fifth_note, seventh_note, third_note)[coin]
+
+        # construct minor second or major five, 2_7, 5_7
+        elif sampled_index[i] == 1:
+            coin = np.random.randint(0,3)
+            tenor_notes[i] = (fourth_note, seventh_note, fifth_note, fourth_note)[coin] # increase chance of fifth
+            root_notes[i] = (sixth_note, fifth_note, seventh_note, seventh_note)[coin]
+            seventh_notes[i] = (first_note, fourth_note, fourth_note, sixth_note)[coin]
+
+        elif sampled_index[i] == 2:
+            coin = np.random.randint(0,3) # increase chance of fifth
+            tenor_notes[i] = (first_note, fifth_note, seventh_note, first_note)[coin]
+            root_notes[i] = (fifth_note, first_note, fifth_note, sixth_note)[coin]
+            seventh_notes[i] = (rest, rest, rest)[coin]
+
+        elif sampled_index[i] == 3:
+            coin = np.random.randint(0,3) # increase chance of forth
+            tenor_notes[i] = (first_note, sixth_note, sixth_note, second_note)[coin]
+            root_notes[i] = (sixth_note, first_note, second_note, seventh_note)[coin]
+            seventh_notes[i] = (rest, rest, first_note, sixth_note)[coin]
+
+        elif sampled_index[i] == 4:
+            coin = np.random.randint(0,4)
+            tenor_notes[i] = (first_note, seventh_note, second_note, third_note)[coin] # increase chance of fifth
+            root_notes[i] = (third_note, second_note, seventh_note, seventh_note)[coin]
+            seventh_notes[i] = (rest, fourth_note, fourth_note, rest)[coin]
+
+        elif sampled_index[i] == 5:
+            coin = np.random.randint(0,3)
+            tenor_notes[i] = (first_note, fourth_note, first_note)[coin]
+            root_notes[i] = (third_note, second_note, fourth_note)[coin]
+            seventh_notes[i] = (rest, first_note, rest)[coin]
+
         # diminish seventh or minor third
-        if (sampled_index[i]==6):
+        elif (sampled_index[i]==6): #7_7
             coin = np.random.randint(0,2)
-            bass_notes[i] = (second_note, fifth_note)[coin]
+            tenor_notes[i] = (second_note, fifth_note)[coin]
             root_notes[i] = (fourth_note, third_note)[coin]
+            seventh_notes[i] = (sixth_note, fourth_note)[coin]
+
+        # whether to add seventh note
+        coinb = np.random.randint(0,3)
+        seventh_notes[i] = (rest, rest, seventh_notes[i])[coinb]
     
     ## add noise 
     # to be added
@@ -200,9 +230,9 @@ def data_generation(scale_type="major", serial_nb = "0001", metadata_df=None):
             a = random.sample(range(len(octives)), 1)
             sampled_notes[i] = octives[a]
     for i in range(len(sampled_notes2)):
-        octives = np.array(get_octive(bass_notes[i], FREQ_RANGE))
+        octives = np.array(get_octive(tenor_notes[i], FREQ_RANGE))
         a = random.sample(range(len(octives)), 1)
-        bass_notes[i] = octives[a]
+        tenor_notes[i] = octives[a]
     for i in range(len(sampled_notes3)):
         octives = np.array(get_octive(root_notes[i], FREQ_RANGE))
         a = random.sample(range(len(octives)), 1)
@@ -216,30 +246,30 @@ def data_generation(scale_type="major", serial_nb = "0001", metadata_df=None):
 
     gen = WaveAdder(
         ModulatedOscillator(
-            SineOscillator(),
-            ADSREnvelope(0.01, 0.01, 1, 0.01),
-            FrequencyModulator(notes=sampled_notes, note_lens=sampled_time, duration=4.0),
+            SineOscillator(sample_rate=SR),
+            ADSREnvelope(0.01, 0.01, 1, 0.01, sample_rate=SR),
+            FrequencyModulator(notes=sampled_notes, note_lens=sampled_time, duration=4.0, sample_rate=SR),
             amp_mod=amp_mod,
             freq_mod = freq_mod_2
         ),
         ModulatedOscillator(
-            SineOscillator(),
-            ADSREnvelope(0.01, 0.01, 1, 0.01),
-            FrequencyModulator(notes=bass_notes, note_lens=sampled_time2, duration=4.0),
+            SineOscillator(sample_rate=SR),
+            ADSREnvelope(0.01, 0.01, 1, 0.01, sample_rate=SR),
+            FrequencyModulator(notes=tenor_notes, note_lens=sampled_time2, duration=4.0, sample_rate=SR),
             amp_mod=amp_mod,
             freq_mod = freq_mod_2
         ),
         ModulatedOscillator(
-            SineOscillator(),
-            ADSREnvelope(0.01, 0.01, 1, 0.01),
-            FrequencyModulator(notes=root_notes, note_lens=sampled_time3, duration=4.0),
+            SineOscillator(sample_rate=SR),
+            ADSREnvelope(0.01, 0.01, 1, 0.01, sample_rate=SR),
+            FrequencyModulator(notes=root_notes, note_lens=sampled_time3, duration=4.0, sample_rate=SR),
             amp_mod=amp_mod,
             freq_mod = freq_mod_2
         ),
         ModulatedOscillator(
-            SineOscillator(),
-            ADSREnvelope(0.01, 0.01, 1, 0.01),
-            FrequencyModulator(notes=seventh_notes, note_lens=sampled_time4, duration=4.0),
+            SineOscillator(sample_rate=SR),
+            ADSREnvelope(0.01, 0.01, 1, 0.01, sample_rate=SR),
+            FrequencyModulator(notes=seventh_notes, note_lens=sampled_time4, duration=4.0, sample_rate=SR),
             amp_mod=amp_mod,
             freq_mod = freq_mod_2
         ),
@@ -252,16 +282,16 @@ def data_generation(scale_type="major", serial_nb = "0001", metadata_df=None):
     elif scale_type == "minor":
         file_name = "test__" + serial_nb ## CHANGE ME
     wave_to_file(wav, fname=file_name, scale_type=scale_type)
-    new_row = pd.DataFrame([{'filename':file_name, 'label':scale_name}])
+    new_row = pd.DataFrame([{'filename':file_name+".wav", 'label':scale_name}])
     metadata_df = pd.concat([metadata_df, new_row], ignore_index=True)
     return metadata_df
 
 if __name__ == "__main__":
-    nb_sample = 1500
+    nb_sample = 30000
     metadata_df = pd.DataFrame()
     for i in range(1, nb_sample+1):
-        metadata_df = data_generation(scale_type="major", serial_nb=f"{i:04d}", metadata_df=metadata_df)
-        metadata_df = data_generation(scale_type="minor", serial_nb=f"{i:04d}", metadata_df=metadata_df)
-    saved_path = "/rds/general/user/cl222/home/audio/metadata_24.csv" ## CHANGE ME
-    print(metadata_df)
-    metadata_df.to_csv(saved_path, sep='\t', index=False)
+        metadata_df = data_generation(scale_type="major", serial_nb=f"{i:05d}", metadata_df=metadata_df)
+        metadata_df = data_generation(scale_type="minor", serial_nb=f"{i:05d}", metadata_df=metadata_df)
+        saved_path = "/rds/general/user/cl222/home/audio/metadata_24.csv" ## CHANGE ME
+        # print(metadata_df)
+        metadata_df.to_csv(saved_path, sep='\t', index=False)
