@@ -42,12 +42,14 @@ class ResNet(nn.Module):
                                   nn.BatchNorm2d(args.foc), #
                                   nn.ReLU())
         
-        self.layer1 = self.make_layer(ResidualBlock, args.foc*2, 2, stride = 2)
-        self.layer2 = self.make_layer(ResidualBlock, args.foc*4, 2, stride = 2)
-        self.layer3 = self.make_layer(ResidualBlock, args.foc*8, 2, stride = 2)
-        self.layer4 = self.make_layer(ResidualBlock, args.foc*16, 2, stride = 2)
-        self.maxpool = nn.MaxPool2d((1,4))
-        self.fc = nn.Linear(3584*4, num_classes) 
+        self.layer1 = self.make_layer(ResidualBlock, args.foc*2, 2, stride = (2,4))
+        self.layer2 = self.make_layer(ResidualBlock, args.foc*4, 2, stride = (2,4))
+        self.layer3 = self.make_layer(ResidualBlock, args.foc*8, 2, stride = (2,4))
+        self.layer4 = self.make_layer(ResidualBlock, args.foc*16, 2, stride = (2,4))
+        self.maxpool = nn.MaxPool2d((2,4))
+        # self.fc = nn.Linear(args.foc*16, num_classes) 
+        self.conv2 = nn.Conv2d(args.foc*16, num_classes, kernel_size = 1, stride = 1, #
+                                            padding = 0, bias = False)
     
     def make_layer(self, block, channels, num_blocks, stride):
         strides = [stride] + [1] * (num_blocks - 1)
@@ -58,14 +60,14 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
     
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-        x = self.maxpool(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
+        # x_dim = 1x32x887
+        x = self.conv1(x) #x_dim = args.foc x 32 x 887
+        x = self.layer1(x)  #x_dim = args.foc*2 x 16 x 222
+        x = self.layer2(x) #x_dim = args.foc*4 x 8 x 56
+        x = self.layer3(x) #x_dim = args.foc*8 x 4 x 14
+        x = self.layer4(x) #x_dim = args.foc*16 x 2 x 4
+        x = self.maxpool(x) #x_dim = args.foc*16 x 1 x 1
+        x = self.conv2(x)  # x_dim = batch_size x nb_class x 1 x1 
         return x
     
 # please do not change the name of this class
