@@ -13,7 +13,9 @@ from synth.components.oscillators.modulated_oscillator import ModulatedOscillato
 from synth.components.oscillators.oscillators import SineOscillator, SquareOscillator, SawtoothOscillator, TriangleOscillator
 from synth.components.envelopes import ADSREnvelope
 from synth.components.freqencymod import FrequencyModulator
+from joblib import Parallel, delayed
 
+# define constants
 SR = 16000 # sample rate #16000
 MAJOR_FREQ = {
     "C_":261.6256, 
@@ -43,30 +45,29 @@ MINOR_FREQ = {
     "bb":466.1638, 
     "b_":493.8833}
 
+# amplitude class (for now)
+STABLE = (0.01, 0.01, 1, 0.01) # attack_duration, decay_duration, sustain_level, release_duration
+INCREASE = (2, 0.01, 1, 0.01)
+DECREASE = (0.01, 0.01, 1, 2)
+
+
 #####################################################################
 # Helper functions
 hz = lambda note:librosa.note_to_hz(note)
 to_16 = lambda wav, amp: np.int16(wav * amp * (2**15 - 1))
 
-def wave_to_file(wav, wav2=None, fname="temp", amp=0.1, scale_type="major"):
+def wave_to_file(wav, wav2=None, fname="temp", amp=0.1):
     wav = np.array(wav)
     wav = to_16(wav, amp)
     if wav2 is not None:
         wav2 = np.array(wav2)
         wav2 = to_16(wav2, amp)
         wav = np.stack([wav, wav2]).T
-    if scale_type == "major":
-        try:
-            wavfile.write(f"../../audio/major_24/{fname}.wav", SR, wav)
-        except FileNotFoundError:
-            os.makedirs('../../audio/major_24/')
-            wavfile.write(f"../../audio/major_24/{fname}.wav", SR, wav)
-    elif scale_type == "minor": 
-        try:
-            wavfile.write(f"../../audio/minor_24/{fname}.wav", SR, wav)
-        except FileNotFoundError:
-            os.makedirs('../../audio/minor_24/')
-            wavfile.write(f"../../audio/minor_24/{fname}.wav", SR, wav)
+    try:
+        wavfile.write(f"../../audio/new_train/{fname}.wav", SR, wav)
+    except FileNotFoundError:
+        os.makedirs('../../audio/new_train/')
+        wavfile.write(f"../../audio/new_train/{fname}.wav", SR, wav)
 
 def amp_mod(init_amp, env):
     return env * init_amp
@@ -96,7 +97,8 @@ def get_octive(freq, freq_range):
     octive_down = [freq/e for e in octives]
     octive_list = [freq] + octive_up + octive_down
     octive_list = [e for e in octive_list if (e > freq_range[0] and e < freq_range[1])]
-    return octive_list
+    sampled_oct = random.sample(octive_list, k=1)[0]
+    return sampled_oct
 
 ##########################################################################
 # generate metadata file
@@ -124,23 +126,19 @@ def generate_metadata_file(nb_sample, major_prop, bias, bias_type, bias_strength
     # assign keys for each sample
     nb_major = int(nb_sample * major_prop)
     nb_minor = nb_sample - nb_major
-    print(nb_sample, nb_major, nb_minor)
     major_scales = random.choices(sorted(MAJOR_FREQ), k=nb_major)
     minor_scales = random.choices(sorted(MINOR_FREQ), k=nb_minor)
     scales = ["major"]*nb_major + ["minor"]*nb_minor
     keys = major_scales + minor_scales # list
 
     # assign wave_shape
-
     if bias != "wave_shape":
         wave_shape = controlling_factors["wave_shape"]
         wave_shapes = [wave_shape] * nb_sample
-    
      # assign amplitude
     if bias != "amplitude":
         amplitude = controlling_factors["amplitude"]
         amplitudes = [amplitude] * nb_sample
-    
     # assign freq_range
     if bias != "freq_range":
         freq_range = controlling_factors["freq_range"]
@@ -172,24 +170,148 @@ def generate_metadata_file(nb_sample, major_prop, bias, bias_type, bias_strength
     d = {"filename":filenames, "wave_shape":wave_shapes, "amplitude":amplitudes, "freq_range":freq_ranges, "is_noise":is_noises, 
             "scale":scales, "key":keys}
     metadata_df = pd.DataFrame(d)
-    print(metadata_df)
-    pass
+    return metadata_df
 
 # generate sample according to metadata_file
-def data_generation():
+def data_generation(one_metadata):
     """
     Args: 
-        - metadata_csv (csv): csv file containing characteristics of samples to generate
-        - noise_level (float): percentage of noise samples in all samples. Range: [0.0, 1.0] 
-    
+        - one_metadata (pandas.core.series.Series): one sample in metadata_df
     Return:
-        - Audio samples built according to metadata_csv and noise_level
+        - An audio sample built according to one_metadata 
     """
-    pass
+    # load info
+    filename = one_metadata["filename"]
+    scale = one_metadata["scale"]
+    key = one_metadata["key"]
+    wave_shape = one_metadata["wave_shape"]
+    amplitude = one_metadata["amplitude"]
+    freq_range = one_metadata["freq_range"]
+    is_noise = one_metadata["is_noise"]
+
+    # build scale and triads
+    freq = MAJOR_FREQ[key] if scale=="major" else MINOR_FREQ[key]  
+    first_note = freq  
+    second_note = freq*pow(2, 2/12)
+    fourth_note = freq*pow(2, 5/12)
+    fifth_note = freq*pow(2, 7/12)
+    seventh_note = freq*pow(2, 11/12)
+    if scale=="major":
+        third_note = freq*pow(2, 4/12)
+        sixth_note = freq*pow(2, 9/12)
+    else: # minor notes
+        third_note = freq*pow(2, 3/12)
+        sixth_note = freq*pow(2, 8/12)
+    rest = 0
+    scale = np.array([first_note, second_note, third_note, fourth_note, fifth_note, sixth_note, seventh_note, rest])
+    triads = np.array(["first_triad", "second_triad", "third_triad", "fourth_triad", "fifth_triad", "sixth_triad", "seventh_triad"])
+
+    # sample number of notes in a melody
+    nb_of_traids = random.randrange(3, 7)
+    sampled_index = random.choices(range(len(triads)), k=nb_of_traids) # sample with replacement
+    sampled_triads = triads[sampled_index]
+
+    # control noise level
+    if not is_noise:
+        available_index = list(range(len(sampled_triads)))
+        while ("first_triad" not in sampled_triads) or ("fourth_triad" not in sampled_triads) or ("fifth_triad" not in sampled_triads):
+            if ("first_triad" not in sampled_triads):
+                i = random.sample(available_index, k=1)
+                i = np.array(i)
+                sampled_triads[i] = "first_triad"
+                available_index.remove(i)
+            if ("fourth_triad" not in sampled_triads):
+                i = random.sample(available_index, k=1)
+                i = np.array(i)
+                sampled_triads[i] = "fourth_triad"
+                available_index.remove(i)
+            if ("fifth_triad" not in sampled_triads):
+                i = random.sample(available_index, k=1)
+                i = np.array(i)
+                sampled_triads[i] = "fifth_triad"
+                available_index.remove(i)
+    else:
+        available_index = list(range(len(sampled_triads)))
+        available_triad = ["second_triad", "third_triad", "sixth_triad", "seventh_triad"]
+        while ("first_triad" in sampled_triads) and ("fourth_triad" in sampled_triads) and ("fifth_triad" in sampled_triads):
+            i = random.randint(0, len(available_index)-1)
+            j = random.randint(0, len(available_triad)-1)
+            sampled_triads[i] = available_triad[j]
+            available_index.remove(i)
+
+    # build notes with sampled chords
+    ch_1_notes = [first_note if traid in ("first_triad", "fourth_triad", "sixth_triad") else seventh_note if traid in ("third_triad")\
+        else second_note for traid in sampled_triads]
+    ch_2_notes = [third_note if traid in ("first_triad", "third_triad", "sixth_triad") else seventh_note if traid in ("fifth_triad")\
+        else fourth_note for traid in sampled_triads]
+    ch_3_notes = [fifth_note if traid in ("first_triad", "third_triad", "fifth_triad") else seventh_note if traid in ("seventh_triad")\
+        else sixth_note for traid in sampled_triads]
+    coin = random.randint(0,1)
+    if coin==1:
+        ch_4_notes = [first_note if traid in ("second_triad") else fourth_note if traid in ("fifth_triad") \
+            else sixth_note if traid in ("seventh_triad") else rest for traid in sampled_triads]   # seventh channel 2_7, 5_7, 7_7
+    else: ch_4_notes = [0.0] *len(ch_3_notes)
+
+    # sample duration of notes
+    sampled_time = list(np.random.uniform(0.2, 0.9, nb_of_traids))
+    sampled_time2, sampled_time3, sampled_time4 = copy.deepcopy(sampled_time), copy.deepcopy(sampled_time), copy.deepcopy(sampled_time)
+
+    # add octives 
+    ch_1_notes = [get_octive(note, freq_range) for note in ch_1_notes]
+    ch_2_notes = [get_octive(note, freq_range) for note in ch_2_notes]
+    ch_3_notes = [get_octive(note, freq_range) for note in ch_3_notes]
+    ch_4_notes = [get_octive(note, freq_range) if note > 0.0 else 0.0 for note in ch_4_notes]
+
+
+    # build melody
+    oscillator = SineOscillator if wave_shape=="sine" else SquareOscillator if wave_shape=="square" \
+        else SawtoothOscillator if wave_shape=="sawtooth" else TriangleOscillator
+    amp_change = STABLE if amplitude=="stable" else INCREASE if amplitude=="increase" else DECREASE
+    gen = WaveAdder(
+        ModulatedOscillator(
+            oscillator(sample_rate=SR),
+            ADSREnvelope(amp_change[0], amp_change[1], amp_change[2], amp_change[3], sample_rate=SR),
+            FrequencyModulator(notes=ch_1_notes, note_lens=sampled_time, duration=4.0, sample_rate=SR),
+            amp_mod=amp_mod,
+            freq_mod = freq_mod_2
+        ),
+        ModulatedOscillator(
+            oscillator(sample_rate=SR),
+            ADSREnvelope(amp_change[0], amp_change[1], amp_change[2], amp_change[3], sample_rate=SR),
+            FrequencyModulator(notes=ch_2_notes, note_lens=sampled_time2, duration=4.0, sample_rate=SR),
+            amp_mod=amp_mod,
+            freq_mod = freq_mod_2
+        ),
+        ModulatedOscillator(
+            oscillator(sample_rate=SR),
+            ADSREnvelope(amp_change[0], amp_change[1], amp_change[2], amp_change[3], sample_rate=SR),
+            FrequencyModulator(notes=ch_3_notes, note_lens=sampled_time3, duration=4.0, sample_rate=SR),
+            amp_mod=amp_mod,
+            freq_mod = freq_mod_2
+        ),
+        ModulatedOscillator(
+            oscillator(sample_rate=SR),
+            ADSREnvelope(amp_change[0], amp_change[1], amp_change[2], amp_change[3], sample_rate=SR),
+            FrequencyModulator(notes=ch_4_notes, note_lens=sampled_time4, duration=4.0, sample_rate=SR),
+            amp_mod=amp_mod,
+            freq_mod = freq_mod_2
+        ),
+        stereo=False
+    )
+    
+    # store to wav file
+    wav = gettrig(gen, amp_change[0]+amp_change[1]-amp_change[3]+4) # check
+    wave_to_file(wav, fname=filename)
+    return None
 
 if __name__ == "__main__":
     FREQ_RANGE = (130.81, 523.25)
-    generate_metadata_file(nb_sample=20, major_prop=0.3, bias="wave_shape", 
-        bias_type = {"major":"sine", "minor":"square"}, bias_strength=1.0, noise_level = 0.5,
-        controlling_factors={"amplitude":"stable", "freq_range": FREQ_RANGE}, data_use="train")
+    NB_SAMPLE = 20
+    metadata_df = generate_metadata_file(nb_sample=NB_SAMPLE, major_prop=0.5, bias="wave_shape", 
+            bias_type = {"major":"sine", "minor":"square"}, bias_strength=1.0, noise_level = 0.1,
+            controlling_factors={"amplitude":"stable", "freq_range": FREQ_RANGE}, data_use="train")
+    saved_path = "/rds/general/user/cl222/home/audio/metadata_newtrain.csv" ## CHANGE ME
+    metadata_df.to_csv(saved_path)
+    Parallel(n_jobs=2)(delayed(data_generation)(metadata_df.iloc(0)[i]) for i in range(NB_SAMPLE))
+    data_generation(metadata_df.iloc(0)[1])
 
