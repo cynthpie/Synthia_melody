@@ -64,10 +64,10 @@ def wave_to_file(wav, wav2=None, fname="temp", amp=0.1):
         wav2 = to_16(wav2, amp)
         wav = np.stack([wav, wav2]).T
     try:
-        wavfile.write(f"../../audio/new_train/{fname}.wav", SR, wav)
+        wavfile.write(f"../../audio/unbiased_train/{fname}.wav", SR, wav)
     except FileNotFoundError:
-        os.makedirs('../../audio/new_train/')
-        wavfile.write(f"../../audio/new_train/{fname}.wav", SR, wav)
+        os.makedirs('../../audio/unbiased_train/')
+        wavfile.write(f"../../audio/unbiased_train/{fname}.wav", SR, wav)
 
 def amp_mod(init_amp, env):
     return env * init_amp
@@ -132,31 +132,29 @@ def generate_metadata_file(nb_sample, major_prop, bias, bias_type, bias_strength
     keys = major_scales + minor_scales # list
 
     # assign wave_shape
-    if bias != "wave_shape":
-        wave_shape = controlling_factors["wave_shape"]
-        wave_shapes = [wave_shape] * nb_sample
-     # assign amplitude
-    if bias != "amplitude":
-        amplitude = controlling_factors["amplitude"]
-        amplitudes = [amplitude] * nb_sample
+    wave_shape = controlling_factors["wave_shape"]
+    wave_shapes = [wave_shape] * nb_sample
+    # assign amplitude
+    amplitude = controlling_factors["amplitude"]
+    amplitudes = [amplitude] * nb_sample
     # assign freq_range
-    if bias != "freq_range":
-        freq_range = controlling_factors["freq_range"]
-        freq_ranges = [freq_range] * nb_sample
+    freq_range = controlling_factors["freq_range"]
+    freq_ranges = [freq_range] * nb_sample
 
     # assign bias
-    biases = [bias_type[s] for s in scales] # factor of correlation. CHANGE if needed
-    nb_biased_sample = int(nb_sample * bias_strength)
-    nb_unbiased_sample = nb_sample - nb_biased_sample
-    unbiased_index = random.choices(range(nb_sample), k=nb_unbiased_sample)
-    new_biases = [controlling_factors[bias] if i in unbiased_index else biases[i] for i in range(nb_sample)]
+    if bias_strength >0:
+        biases = [bias_type[s] for s in scales] # factor of correlation. CHANGE if needed
+        nb_biased_sample = int(nb_sample * bias_strength)
+        nb_unbiased_sample = nb_sample - nb_biased_sample
+        unbiased_index = random.choices(range(nb_sample), k=nb_unbiased_sample)
+        new_biases = [controlling_factors[bias] if i in unbiased_index else biases[i] for i in range(nb_sample)]
 
-    if bias=="wave_shape":
-        wave_shapes = new_biases
-    elif bias=="amplitude":
-        amplitude = new_biases
-    else:
-        freq_range = new_biases
+        if bias=="wave_shape":
+            wave_shapes = new_biases
+        elif bias=="amplitude":
+            amplitude = new_biases
+        else:
+            freq_range = new_biases
 
     # assign noise
     nb_noise_sample = int(nb_sample * noise_level)
@@ -306,12 +304,14 @@ def data_generation(one_metadata):
 
 if __name__ == "__main__":
     FREQ_RANGE = (130.81, 523.25)
-    NB_SAMPLE = 20
+    NB_SAMPLE = 50000
     metadata_df = generate_metadata_file(nb_sample=NB_SAMPLE, major_prop=0.5, bias="wave_shape", 
-            bias_type = {"major":"sine", "minor":"square"}, bias_strength=1.0, noise_level = 0.1,
-            controlling_factors={"amplitude":"stable", "freq_range": FREQ_RANGE}, data_use="train")
-    saved_path = "/rds/general/user/cl222/home/audio/metadata_newtrain.csv" ## CHANGE ME
+            bias_type = {"major":"sine", "minor":"square"}, bias_strength=0.0, noise_level = 0.0,
+            controlling_factors={"amplitude":"stable", "freq_range": FREQ_RANGE, "wave_shape":"sine"},
+            data_use="train")
+    saved_path = "/rds/general/user/cl222/home/audio/metadata_unbiased_train.csv" ## CHANGE ME
     metadata_df.to_csv(saved_path)
-    Parallel(n_jobs=2)(delayed(data_generation)(metadata_df.iloc(0)[i]) for i in range(NB_SAMPLE))
+    print(metadata_df)
+    Parallel(n_jobs=5)(delayed(data_generation)(metadata_df.iloc(0)[i]) for i in range(NB_SAMPLE))
     data_generation(metadata_df.iloc(0)[1])
 
