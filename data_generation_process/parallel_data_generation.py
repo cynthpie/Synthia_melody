@@ -67,7 +67,7 @@ def wave_to_file(wav, wav2=None, fname="temp", amp=0.1):
     try:
         wavfile.write(f"../../audio/unbiased_test/{fname}.wav", SR, wav)
     except FileNotFoundError:
-        os.makedirs('../../audio/unbiased_train/')
+        os.makedirs('../../audio/unbiased_test/')
         wavfile.write(f"../../audio/unbiased_test/{fname}.wav", SR, wav)
 
 def amp_mod(init_amp, env):
