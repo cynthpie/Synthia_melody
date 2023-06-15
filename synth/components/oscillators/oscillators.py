@@ -45,7 +45,10 @@ class SquareOscillator(SineOscillator):
 
 class SawtoothOscillator(Oscillator):
     def _post_freq_set(self):
-        self._period = self._sample_rate / self._f
+        try:
+            self._period = self._sample_rate / self._f
+        except ZeroDivisionError:
+            self._period = 0
         self._post_phase_set
 
     def _post_phase_set(self):
@@ -55,6 +58,8 @@ class SawtoothOscillator(Oscillator):
         self._i = 0
 
     def __next__(self):
+        if self._period == 0:
+            return 0
         div = (self._i + self._p) / self._period
         val = 2 * (div - math.floor(0.5 + div))
         self._i = self._i + 1
