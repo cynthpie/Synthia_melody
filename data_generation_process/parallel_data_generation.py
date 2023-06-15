@@ -15,6 +15,7 @@ from synth.components.envelopes import ADSREnvelope
 from synth.components.freqencymod import FrequencyModulator
 from joblib import Parallel, delayed
 
+print("data generation script used to produce unbiased 50000 training data 001")
 # define constants
 SR = 16000 # sample rate #16000
 MAJOR_FREQ = {
