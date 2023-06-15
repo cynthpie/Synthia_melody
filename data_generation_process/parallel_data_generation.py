@@ -15,7 +15,7 @@ from synth.components.envelopes import ADSREnvelope
 from synth.components.freqencymod import FrequencyModulator
 from joblib import Parallel, delayed
 
-print("data generation script used to produce unbiased 10000 testing data 001")
+print("data generation script used to produce biased 50000 train data 001")
 # define constants
 SR = 16000 # sample rate #16000
 MAJOR_FREQ = {
@@ -65,10 +65,10 @@ def wave_to_file(wav, wav2=None, fname="temp", amp=0.1):
         wav2 = to_16(wav2, amp)
         wav = np.stack([wav, wav2]).T
     try:
-        wavfile.write(f"../../audio/unbiased_test/{fname}.wav", SR, wav)
+        wavfile.write(f"../../audio/biased_train/{fname}.wav", SR, wav)
     except FileNotFoundError:
-        os.makedirs('../../audio/unbiased_test/')
-        wavfile.write(f"../../audio/unbiased_test/{fname}.wav", SR, wav)
+        os.makedirs('../../audio/biased_train/')
+        wavfile.write(f"../../audio/biased_train/{fname}.wav", SR, wav)
 
 def amp_mod(init_amp, env):
     return env * init_amp
@@ -305,12 +305,12 @@ def data_generation(one_metadata):
 
 if __name__ == "__main__":
     FREQ_RANGE = (130.81, 523.25)
-    NB_SAMPLE = 10000
+    NB_SAMPLE = 50000
     metadata_df = generate_metadata_file(nb_sample=NB_SAMPLE, major_prop=0.5, bias="wave_shape", 
-            bias_type = {"major":"sine", "minor":"square"}, bias_strength=0.0, noise_level = 0.0,
+            bias_type = {"major":"sine", "minor":"square"}, bias_strength=1.0, noise_level = 0.0,
             controlling_factors={"amplitude":"stable", "freq_range": FREQ_RANGE, "wave_shape":"sine"},
-            data_use="test")
-    saved_path = "/rds/general/user/cl222/home/audio/metadata_unbiased_test.csv" ## CHANGE ME
+            data_use="train")
+    saved_path = "/rds/general/user/cl222/home/audio/metadata_biased_train.csv" ## CHANGE ME
     metadata_df.to_csv(saved_path)
     print(metadata_df)
     Parallel(n_jobs=6)(delayed(data_generation)(metadata_df.iloc(0)[i]) for i in range(NB_SAMPLE))
