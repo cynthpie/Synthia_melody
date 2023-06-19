@@ -21,27 +21,30 @@ else:
     device = torch.device('cpu')
 print(device)
     
-def get_model_args():
-    parser = argparse.ArgumentParser(description='model_args')
-    parser.add_argument('--foc', type=int, default=64,
-                        help='out-channel of first Conv2D in ResNet18 [default: 64]')
+
+def get_training_args():
+    parser = argparse.ArgumentParser(description='training_args')
+    parser.add_argument('--lr', type=float, default=0.0001,
+                        help='learning rate [default: 0.001]')
+    parser.add_argument('--wd', type=float, default=0.0,
+                        help='weight decay [default: 0.0]')
+    parser.add_argument('--batch', type=int, default=128,
+                        help='batch size [default: 16]')
+    parser.add_argument("--epochs", type=int, default=8,
+                        help="number of epoch for training")
+    parser.add_argument("--optimizer", type=str, default="Adam",
+                        help="optimizer used in training")
     parser.add_argument("--num_classes", type=int, default=2,
                         help="number of class labels [default: 2]")
     args = parser.parse_args()
     return args
 
-def get_training_args():
-    parser = argparse.ArgumentParser(description='training_args')
-    parser.add_argument('--lr', type=float, default=0.0005,
-                        help='learning rate [default: 0.001]')
-    parser.add_argument('--wd', type=float, default=0.0,
-                        help='weight decay [default: 0.0]')
-    parser.add_argument('--batch', type=int, default=16,
-                        help='batch size [default: 16]')
-    parser.add_argument("--epochs", type=int, default=10,
-                        help="number of epoch for training")
-    parser.add_argument("--optimizer", type=str, default="Adam",
-                        help="optimizer used in training")
+def get_model_args():
+    parser = argparse.ArgumentParser(description='model_args')
+    parser.add_argument('--foc', type=int, default=100,
+                        help='out-channel of first Conv2D in ResNet18 [default: 64]')
+    parser.add_argument("--num_classes", type=int, default=2,
+                        help="number of class labels [default: 2]")
     args = parser.parse_args()
     return args
 
@@ -83,7 +86,7 @@ def build_and_log_model(model_args):
         model = MyResNet(model_args)
         model_artifact = wandb.Artifact(
             name="ResNet-18", type="model",
-            description="fully-convolutional ResNet-18", 
+            description="ResNet-18", 
             metadata=vars(model_args))
         torch.save(model.state_dict(), "initialized_model.pth")
         model_artifact.add_file("initialized_model.pth")
@@ -95,10 +98,11 @@ def train(model, train_loader, val_loader, args):
     model.train()
     example_ct = 0
     if args.num_classes==2:
-        loss_fcn = nn.BCEWithLogitsLoss()
+        loss_fcn = nn.BCELoss()
     else:
         loss_fcn = F.cross_entropy
     optimizer = getattr(torch.optim, args.optimizer)(model.parameters(), lr=args.lr, weight_decay=args.wd)
+    wandb.watch(model, loss_fcn, log="all", log_freq=1000)
     for e in range(args.epochs):
         print("this is epoch", e)
         for t, (x, y) in enumerate(train_loader):
@@ -126,10 +130,12 @@ def train_and_log(train_args, model_args):
         data_dir = data_dir[2:]
         unbiased_train_ds = torch.load(os.path.join(data_dir+"/unbiased_train.pt"))
         unbiased_val_ds = torch.load(os.path.join(data_dir+"/unbiased_val.pt"))
+        #biased_train_ds = torch.load(os.path.join(data_dir+"/biased_train.pt"))
+        #biased_val_ds = torch.load(os.path.join(data_dir+"/biased_val.pt"))
         print("finish load data from artifact")
 
-        train_loader = DataLoader(unbiased_train_ds, batch_size=args.batch)
-        val_loader = DataLoader(unbiased_val_ds, batch_size=args.batch)
+        train_loader = DataLoader(unbiased_train_ds, batch_size=train_args.batch, shuffle=True)
+        val_loader = DataLoader(unbiased_val_ds, batch_size=train_args.batch, shuffle=True)
         print("finish initialise data loader")
 
         model_artifact = run.use_artifact("ResNet-18:latest")
@@ -139,7 +145,7 @@ def train_and_log(train_args, model_args):
         model_config = model_artifact.metadata
         config.update(model_config)
         args = argparse.Namespace(**config) 
-        model = MyResNet(args)
+        model = MyResNet(model_args)
         print("finish create model")
         print("model_dir=", model_dir)
         print("model_path=", model_path)
@@ -162,7 +168,7 @@ def test(model, test_loader, args):
     num_correct = 0
     num_samples = 0
     if args.num_classes==2:
-        loss_fcn = nn.BCEWithLogitsLoss(reduction='sum')
+        loss_fcn = nn.BCELoss(reduction='sum')
     else:
         loss_fcn = F.cross_entropy
     with torch.no_grad():
@@ -194,7 +200,7 @@ def get_hardest_k_examples(model, testing_set, args, k=32):
     losses = None
     predictions = None
     if args.num_classes==2:
-        loss_fcn = nn.BCEWithLogitsLoss()
+        loss_fcn = nn.BCELoss()
     else:
         loss_fcn = F.cross_entropy
     with torch.no_grad():
@@ -215,9 +221,11 @@ def get_hardest_k_examples(model, testing_set, args, k=32):
 
     print("argsort_loss device:", argsort_loss.get_device())
     print("loss device", losses.get_device())
-    argsort_loss.to("cpu")
-    losses.to("cpu")
-    predictions.to("cpu")
+    argsort_loss = argsort_loss.cpu()
+    losses = losses.cpu()
+    predictions = predictions.cpu()
+    print("argsort_loss device:", argsort_loss.get_device())
+    print("loss device", losses.get_device())
     highest_k_losses = losses[argsort_loss[-k:]]
     hardest_k_examples = testing_set[argsort_loss[-k:]][0]
     true_labels = testing_set[argsort_loss[-k:]][1]
@@ -253,10 +261,13 @@ def evaluate_and_log(args=None):
         model.to(device)
 
         # test on unbaised, anti-biased, and neutral data
+        print("start evaluating unbiased test set")
         unbiased_loss, unbiased_accuracy, unbiased_highest_losses, unbiased_hardest_examples, \
             unbiased_true_labels, unbiased_preds = evaluate(model, unbiased_test_loader, args)
+        print("start evaluating anti-biased test set")
         anti_biased_loss, anti_biased_accuracy, anti_biased_highest_losses, anti_biased_hardest_examples, \
             anti_biased_true_labels, anti_biased_preds = evaluate(model, anti_biased_test_loader, args)
+        print("start evaluating neutral test set")
         neutral_loss, neutral_accuracy, neutral_highest_losses, neutral_hardest_examples, \
             neutral_true_labels, neutral_preds = evaluate(model, neutral_test_loader, args)
 
@@ -265,13 +276,13 @@ def evaluate_and_log(args=None):
                             "neutral_loss":neutral_loss, "neutral_accuracy":neutral_accuracy})
 
         wandb.log({"unbiased_high-loss-examples":
-            [wandb.Audio(hard_example, sample_rate=16000, caption=str(int(pred)) + "," +  str(int(label)))
+            [wandb.Audio(torch.squeeze(hard_example, dim=0).cpu().detach().numpy(), sample_rate=16000, caption=str(int(pred)) + "," +  str(int(label)))
              for hard_example, pred, label in zip(unbiased_hardest_examples, unbiased_preds, unbiased_true_labels)],
              "anti_biased_high-loss-examples":
-             [wandb.Audio(hard_example, sample_rate=16000, caption=str(int(pred)) + "," +  str(int(label)))
+             [wandb.Audio(torch.squeeze(hard_example,dim=0).cpu().detach().numpy(), sample_rate=16000, caption=str(int(pred)) + "," +  str(int(label)))
              for hard_example, pred, label in zip(anti_biased_hardest_examples, anti_biased_preds, anti_biased_true_labels)],
              "neutral_high-loss-examples":
-             [wandb.Audio(hard_example, sample_rate=16000, caption=str(int(pred)) + "," +  str(int(label)))
+             [wandb.Audio(torch.squeeze(hard_example,dim=0).cpu().detach().numpy(), sample_rate=16000, caption=str(int(pred)) + "," +  str(int(label)))
              for hard_example, pred, label in zip(neutral_hardest_examples, neutral_preds, neutral_true_labels)]})
     return None
 
@@ -290,12 +301,12 @@ def test_log(loss, accuracy, example_ct, epoch):
                 
 if __name__== "__main__":
     print_every = 50
-    model_args = get_model_args()
     train_args = get_training_args()
-    # load_and_log_data() # use if have new data
-    # build_and_log_model(args) # use if have new model
-    train_and_log(args)
-    evaluate_and_log(args)
+    model_args = get_model_args()
+    #load_and_log_data() # use if have new data
+    #build_and_log_model(model_args) # use if have new model
+    #train_and_log(train_args, model_args)
+    evaluate_and_log(model_args)
 
 
     # train_loader = DataLoader(new_dataset, batch_size=args.batch)
