@@ -65,10 +65,10 @@ def wave_to_file(wav, wav2=None, fname="temp", amp=0.1):
         wav2 = to_16(wav2, amp)
         wav = np.stack([wav, wav2]).T
     try:
-        wavfile.write(f"../../audio/neutral_test/{fname}.wav", SR, wav)
+        wavfile.write(f"../../audio/square_test/{fname}.wav", SR, wav)
     except FileNotFoundError:
-        os.makedirs('../../audio/neutral_test/')
-        wavfile.write(f"../../audio/neutral_test/{fname}.wav", SR, wav)
+        os.makedirs('../../audio/square_test/')
+        wavfile.write(f"../../audio/square_test/{fname}.wav", SR, wav)
 
 def amp_mod(init_amp, env):
     return env * init_amp
@@ -308,9 +308,9 @@ if __name__ == "__main__":
     NB_SAMPLE = 10000
     metadata_df = generate_metadata_file(nb_sample=NB_SAMPLE, major_prop=0.5, bias="wave_shape", 
             bias_type = {"major":"square", "minor":"sine"}, bias_strength=0.0, noise_level = 0.0,
-            controlling_factors={"amplitude":"stable", "freq_range": FREQ_RANGE, "wave_shape":"sawtooth"},
+            controlling_factors={"amplitude":"stable", "freq_range": FREQ_RANGE, "wave_shape":"square"},
             data_use="test")
-    saved_path = "/rds/general/user/cl222/home/audio/metadata_neutral_test.csv" ## CHANGE ME
+    saved_path = "/rds/general/user/cl222/home/audio/metadata_square_test.csv" ## CHANGE ME!!!!!!!!!!!
     metadata_df.to_csv(saved_path)
     print(metadata_df)
     Parallel(n_jobs=6)(delayed(data_generation)(metadata_df.iloc(0)[i]) for i in range(NB_SAMPLE))
