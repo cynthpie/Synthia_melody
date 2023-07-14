@@ -17,6 +17,11 @@ from joblib import Parallel, delayed
 
 print("data generation script used to produce neutral 10000 test data 001")
 
+# CHANGE ME
+DATASET_NAME = "triangle_train" ## CHANGE ME, e.g. triangle_train, square_test
+SHAPE = "triangle"
+DATA_USE = "train" # e.g. "train" or "test"
+
 # set seeds
 random.seed(0)
 np.random.seed(0)
@@ -70,10 +75,10 @@ def wave_to_file(wav, wav2=None, fname="temp", amp=0.1):
         wav2 = to_16(wav2, amp)
         wav = np.stack([wav, wav2]).T
     try:
-        wavfile.write(f"../../audio/square_train/{fname}.wav", SR, wav)
+        wavfile.write(f"../../audio/{DATASET_NAME}/{fname}.wav", SR, wav)
     except FileNotFoundError:
-        os.makedirs('../../audio/square_train/')
-        wavfile.write(f"../../audio/square_train/{fname}.wav", SR, wav)
+        os.makedirs(f'../../audio/{DATASET_NAME}/')
+        wavfile.write(f"../../audio/{DATASET_NAME}/{fname}.wav", SR, wav)
 
 def amp_mod(init_amp, env):
     return env * init_amp
@@ -313,11 +318,10 @@ if __name__ == "__main__":
     NB_SAMPLE = 50000
     metadata_df = generate_metadata_file(nb_sample=NB_SAMPLE, major_prop=0.5, bias="wave_shape", 
             bias_type = {"major":"square", "minor":"sine"}, bias_strength=0.0, noise_level = 0.0,
-            controlling_factors={"amplitude":"stable", "freq_range": FREQ_RANGE, "wave_shape":"square"},
-            data_use="train")
-    saved_path = "/rds/general/user/cl222/home/audio/metadata_square_train.csv" ## CHANGE ME!!!!!!!!!!!
+            controlling_factors={"amplitude":"stable", "freq_range": FREQ_RANGE, "wave_shape":SHAPE},
+            data_use=DATA_USE)
+    saved_path = f"/rds/general/user/cl222/home/audio/metadata_{DATASET_NAME}.csv"
     metadata_df.to_csv(saved_path)
     print(metadata_df)
-    Parallel(n_jobs=6)(delayed(data_generation)(metadata_df.iloc(0)[i]) for i in range(NB_SAMPLE))
+    Parallel(n_jobs=-1)(delayed(data_generation)(metadata_df.iloc(0)[i]) for i in range(NB_SAMPLE))
     # data_generation(metadata_df.iloc(0)[1])
-
