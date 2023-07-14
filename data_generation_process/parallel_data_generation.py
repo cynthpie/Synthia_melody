@@ -15,19 +15,16 @@ from synth.components.envelopes import ADSREnvelope
 from synth.components.freqencymod import FrequencyModulator
 from joblib import Parallel, delayed
 
-print("data generation script used to produce neutral 10000 test data 001")
-
 # CHANGE ME
-DATASET_NAME = "triangle_train" ## CHANGE ME, e.g. triangle_train, square_test
-SHAPE = "triangle"
+DATASET_NAME = "square_train" ## CHANGE ME, e.g. triangle_train, square_test
+SHAPE = "square"
 DATA_USE = "train" # e.g. "train" or "test"
-
-# set seeds
-random.seed(0)
-np.random.seed(0)
-
-# define constants
 SR = 16000 # sample rate #16000
+SEED = 0 # train seed=0, test seed=1
+# set seeds
+random.seed(SEED)
+np.random.seed(SEED)
+
 MAJOR_FREQ = {
     "C_":261.6256, 
     "Db":277.1826, 
@@ -189,6 +186,8 @@ def data_generation(one_metadata):
     Return:
         - An audio sample built according to one_metadata 
     """
+    random.seed(SEED)
+    np.random.seed(SEED)
     # load info
     filename = one_metadata["filename"]
     scale = one_metadata["scale"]
@@ -315,7 +314,9 @@ def data_generation(one_metadata):
 
 if __name__ == "__main__":
     FREQ_RANGE = (130.81, 523.25)
-    NB_SAMPLE = 50000
+    NB_SAMPLE = 100000
+
+    # define constants
     metadata_df = generate_metadata_file(nb_sample=NB_SAMPLE, major_prop=0.5, bias="wave_shape", 
             bias_type = {"major":"square", "minor":"sine"}, bias_strength=0.0, noise_level = 0.0,
             controlling_factors={"amplitude":"stable", "freq_range": FREQ_RANGE, "wave_shape":SHAPE},
@@ -323,5 +324,5 @@ if __name__ == "__main__":
     saved_path = f"/rds/general/user/cl222/home/audio/metadata_{DATASET_NAME}.csv"
     metadata_df.to_csv(saved_path)
     print(metadata_df)
-    Parallel(n_jobs=-1)(delayed(data_generation)(metadata_df.iloc(0)[i]) for i in range(NB_SAMPLE))
+    Parallel(n_jobs=100)(delayed(data_generation)(metadata_df.iloc(0)[i]) for i in range(NB_SAMPLE))
     # data_generation(metadata_df.iloc(0)[1])
