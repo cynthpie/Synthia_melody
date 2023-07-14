@@ -6,7 +6,6 @@ import math
 import argparse
 import os
 from model import MyResNet
-from tiny_model import MyTinyResNet
 import wandb
 from torch.utils.data import DataLoader, Dataset, random_split, TensorDataset
 
@@ -20,6 +19,7 @@ if USE_GPU and torch.cuda.is_available():
 else:
     device = torch.device('cpu')
 print(device)
+torch.cuda.manual_seed(0)
     
 
 def get_training_args():
@@ -41,7 +41,7 @@ def get_training_args():
 
 def get_model_args():
     parser = argparse.ArgumentParser(description='model_args')
-    parser.add_argument('--foc', type=int, default=100,
+    parser.add_argument('--foc', type=int, default=32,
                         help='out-channel of first Conv2D in ResNet18 [default: 64]')
     parser.add_argument("--num_classes", type=int, default=2,
                         help="number of class labels [default: 2]")
@@ -56,12 +56,14 @@ def load_data():
         biased_val_ds = torch.load("biased_val_data.pt")
         anti_biased_test_ds = torch.load("anti-biased_test_data.pt")
         neutral_test_ds = torch.load("neutral_test_data.pt")
-        return [unbiased_train_ds, unbiased_val_ds, unbiased_test_ds, biased_train_ds, biased_val_ds, anti_biased_test_ds, neutral_test_ds]
+        square_test_ds = torch.load("square_test_data.pt")
+        triangle_test_ds = torch.load("triangle_test_data.pt")
+        return [unbiased_train_ds, unbiased_val_ds, unbiased_test_ds, biased_train_ds, biased_val_ds, anti_biased_test_ds, neutral_test_ds, square_test_ds, triangle_test_ds]
 
 def load_and_log_data():
     with wandb.init(project="msc_project", job_type="load-data") as run:
         datasets = load_data()
-        names = ["unbiased_train", "unbiased_val", "unbiased_test", "biased_train", "biased_val", "anti-biased_test", "neutral_test"]
+        names = ["unbiased_train", "unbiased_val", "unbiased_test", "biased_train", "biased_val", "anti-biased_test", "neutral_test", "square_test", "triangle_test"]
         raw_data = wandb.Artifact(
             name="raw_dataset_exp001", type="dataset",
             description="dataset used to run experiment 001",
@@ -237,7 +239,7 @@ def evaluate(model, test_loader, args):
     highest_losses, hardest_examples, true_labels, predictions = get_hardest_k_examples(model, test_loader.dataset, args)
     return loss, accuracy, highest_losses, hardest_examples, true_labels, predictions
 
-def evaluate_and_log(args=None):
+def evaluate_and_log(wav_data_path, args=None):
     with wandb.init(project="msc_project", job_type="report", config=args) as run:
         data = run.use_artifact('raw_dataset_exp001:latest')
         data_dir = data.download()
@@ -245,12 +247,16 @@ def evaluate_and_log(args=None):
         unbiased_test = torch.load(os.path.join(data_dir+"/unbiased_test.pt"))
         anti_biased_test = torch.load(os.path.join(data_dir+"/anti-biased_test.pt"))
         neutral_test = torch.load(os.path.join(data_dir+"/neutral_test.pt"))
+        square_test = torch.load(os.path.join(data_dir+"/square_test.pt"))
+        triangle_test = torch.load(os.path.join(data_dir+"/triangle_test.pt"))
 
         unbiased_test_loader = DataLoader(unbiased_test, shuffle=False, batch_size=128)
         anti_biased_test_loader = DataLoader(anti_biased_test, shuffle=False, batch_size=128)
         neutral_test_loader = DataLoader(neutral_test, shuffle=False, batch_size=128)
+        square_test_loader = DataLoader(square_test, shuffle=False, batch_size=128)
+        triangle_test_loader = DataLoader(triangle_test, shuffle=False, batch_size=128)
 
-        model_artifact = run.use_artifact("trained-model:latest")
+        model_artifact = run.use_artifact("trained-model:v16")
         model_dir = model_artifact.download()
         model_path = os.path.join(model_dir, "trained_model.pth")
         model_config = model_artifact.metadata
@@ -259,6 +265,10 @@ def evaluate_and_log(args=None):
         model = MyResNet(args)
         model.load_state_dict(torch.load(model_path))
         model.to(device)
+
+        wav_unbiased_test_path = "/rds/general/user/cl222/home/audio/unbiased_train"
+        wav_anti_biased_test_path = "/rds/general/user/cl222/home/audio/anti-biased_test"
+        wav_neutral_test_path = "/rds/general/user/cl222/home/audio/neutral_test"
 
         # test on unbaised, anti-biased, and neutral data
         print("start evaluating unbiased test set")
@@ -270,20 +280,28 @@ def evaluate_and_log(args=None):
         print("start evaluating neutral test set")
         neutral_loss, neutral_accuracy, neutral_highest_losses, neutral_hardest_examples, \
             neutral_true_labels, neutral_preds = evaluate(model, neutral_test_loader, args)
+        print("start evaluating square test set")
+        square_loss, square_accuracy, square_highest_losses, square_hardest_examples, \
+            square_true_labels, square_preds = evaluate(model, square_test_loader, args)
+        print("start evaluating triangle test set")
+        triangle_loss, triangle_accuracy, triangle_highest_losses, triangle_hardest_examples, \
+            triangle_true_labels, triangle_preds = evaluate(model, triangle_test_loader, args)        
 
         run.summary.update({"unbiased_loss": unbiased_loss, "unbiased_accuracy": unbiased_accuracy,
                             "anti_biased_loss":anti_biased_loss, "anti_biased_accuracy":anti_biased_accuracy,
-                            "neutral_loss":neutral_loss, "neutral_accuracy":neutral_accuracy})
+                            "neutral_loss":neutral_loss, "neutral_accuracy":neutral_accuracy,
+                            "square_loss":square_loss, "square_accuracy":square_accuracy,
+                            "triangle_loss": triangle_loss, "triangle_accuracy":triangle_accuracy})
 
-        wandb.log({"unbiased_high-loss-examples":
-            [wandb.Audio(torch.squeeze(hard_example, dim=0).cpu().detach().numpy(), sample_rate=16000, caption=str(int(pred)) + "," +  str(int(label)))
-             for hard_example, pred, label in zip(unbiased_hardest_examples, unbiased_preds, unbiased_true_labels)],
-             "anti_biased_high-loss-examples":
-             [wandb.Audio(torch.squeeze(hard_example,dim=0).cpu().detach().numpy(), sample_rate=16000, caption=str(int(pred)) + "," +  str(int(label)))
-             for hard_example, pred, label in zip(anti_biased_hardest_examples, anti_biased_preds, anti_biased_true_labels)],
-             "neutral_high-loss-examples":
-             [wandb.Audio(torch.squeeze(hard_example,dim=0).cpu().detach().numpy(), sample_rate=16000, caption=str(int(pred)) + "," +  str(int(label)))
-             for hard_example, pred, label in zip(neutral_hardest_examples, neutral_preds, neutral_true_labels)]})
+        # wandb.log({"unbiased_high-loss-examples":
+        #     [wandb.Audio(torch.squeeze(hard_example, dim=0).cpu().detach().numpy(), sample_rate=16000, caption=str(int(pred)) + "," +  str(int(label)))
+        #      for hard_example, pred, label in zip(unbiased_hardest_examples, unbiased_preds, unbiased_true_labels)],
+        #      "anti_biased_high-loss-examples":
+        #      [wandb.Audio(torch.squeeze(hard_example,dim=0).cpu().detach().numpy(), sample_rate=16000, caption=str(int(pred)) + "," +  str(int(label)))
+        #      for hard_example, pred, label in zip(anti_biased_hardest_examples, anti_biased_preds, anti_biased_true_labels)],
+        #      "neutral_high-loss-examples":
+        #      [wandb.Audio(torch.squeeze(hard_example,dim=0).cpu().detach().numpy(), sample_rate=16000, caption=str(int(pred)) + "," +  str(int(label)))
+        #      for hard_example, pred, label in zip(neutral_hardest_examples, neutral_preds, neutral_true_labels)]})
     return None
 
 
@@ -303,9 +321,9 @@ if __name__== "__main__":
     print_every = 50
     train_args = get_training_args()
     model_args = get_model_args()
-    #load_and_log_data() # use if have new data
-    #build_and_log_model(model_args) # use if have new model
-    #train_and_log(train_args, model_args)
+    # load_and_log_data() # use if have new data
+    # build_and_log_model(model_args) # use if have new model
+    # train_and_log(train_args, model_args)
     evaluate_and_log(model_args)
 
 
