@@ -310,12 +310,12 @@ def data_generation(one_metadata):
 
 if __name__ == "__main__":
     FREQ_RANGE = (130.81, 523.25)
-    NB_SAMPLE = 10000
+    NB_SAMPLE = 50000
     metadata_df = generate_metadata_file(nb_sample=NB_SAMPLE, major_prop=0.5, bias="wave_shape", 
             bias_type = {"major":"square", "minor":"sine"}, bias_strength=0.0, noise_level = 0.0,
-            controlling_factors={"amplitude":"stable", "freq_range": FREQ_RANGE, "wave_shape":"triangle"},
-            data_use="test")
-    saved_path = "/rds/general/user/cl222/home/audio/metadata_triangle_test.csv" ## CHANGE ME!!!!!!!!!!!
+            controlling_factors={"amplitude":"stable", "freq_range": FREQ_RANGE, "wave_shape":"square"},
+            data_use="train")
+    saved_path = "/rds/general/user/cl222/home/audio/metadata_square_train.csv" ## CHANGE ME!!!!!!!!!!!
     metadata_df.to_csv(saved_path)
     print(metadata_df)
     Parallel(n_jobs=6)(delayed(data_generation)(metadata_df.iloc(0)[i]) for i in range(NB_SAMPLE))
