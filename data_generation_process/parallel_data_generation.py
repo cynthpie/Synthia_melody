@@ -16,8 +16,8 @@ from synth.components.freqencymod import FrequencyModulator
 from joblib import Parallel, delayed
 
 # CHANGE ME
-DATASET_NAME = "square_train" ## CHANGE ME, e.g. triangle_train, square_test
-SHAPE = "square"
+DATASET_NAME = "sine_train" ## CHANGE ME, e.g. triangle_train, square_test
+SHAPE = "sine"
 DATA_USE = "train" # e.g. "train" or "test"
 SR = 16000 # sample rate #16000
 SEED = 0 # train seed=0, test seed=1
