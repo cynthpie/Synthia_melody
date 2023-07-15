@@ -16,11 +16,11 @@ from synth.components.freqencymod import FrequencyModulator
 from joblib import Parallel, delayed
 
 # CHANGE ME
-DATASET_NAME = "sine_train" ## CHANGE ME, e.g. triangle_train, square_test
-SHAPE = "sine"
-DATA_USE = "train" # e.g. "train" or "test"
+DATASET_NAME = "square_test" ## CHANGE ME, e.g. triangle_train, square_test
+SHAPE = "square"
+DATA_USE = "test" # e.g. "train" or "test"
 SR = 16000 # sample rate #16000
-SEED = 0 # train seed=0, test seed=1
+SEED = 1 # train seed=0, test seed=1
 # set seeds
 random.seed(SEED)
 np.random.seed(SEED)
@@ -314,7 +314,7 @@ def data_generation(one_metadata):
 
 if __name__ == "__main__":
     FREQ_RANGE = (130.81, 523.25)
-    NB_SAMPLE = 100000
+    NB_SAMPLE = 10000
 
     # define constants
     metadata_df = generate_metadata_file(nb_sample=NB_SAMPLE, major_prop=0.5, bias="wave_shape", 
