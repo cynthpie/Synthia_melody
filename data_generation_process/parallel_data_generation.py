@@ -16,11 +16,11 @@ from synth.components.freqencymod import FrequencyModulator
 from joblib import Parallel, delayed
 
 # CHANGE ME
-DATASET_NAME = "square_test" ## CHANGE ME, e.g. triangle_train, square_test
-SHAPE = "square"
+DATASET_NAME = "sawtooth_test" ## CHANGE ME, e.g. triangle_train, square_test
+SHAPE = "sawtooth"
 DATA_USE = "test" # e.g. "train" or "test"
 SR = 16000 # sample rate #16000
-SEED = 1 # train seed=0, test seed=1
+SEED = 55000 # train seed=0, test seed=55000
 # set seeds
 random.seed(SEED)
 np.random.seed(SEED)
@@ -179,15 +179,15 @@ def generate_metadata_file(nb_sample, major_prop, bias, bias_type, bias_strength
     return metadata_df
 
 # generate sample according to metadata_file
-def data_generation(one_metadata):
+def data_generation(one_metadata, seed):
     """
     Args: 
         - one_metadata (pandas.core.series.Series): one sample in metadata_df
     Return:
         - An audio sample built according to one_metadata 
     """
-    random.seed(SEED)
-    np.random.seed(SEED)
+    random.seed(seed)
+    np.random.seed(seed)
     # load info
     filename = one_metadata["filename"]
     scale = one_metadata["scale"]
@@ -324,5 +324,5 @@ if __name__ == "__main__":
     saved_path = f"/rds/general/user/cl222/home/audio/metadata_{DATASET_NAME}.csv"
     metadata_df.to_csv(saved_path)
     print(metadata_df)
-    Parallel(n_jobs=100)(delayed(data_generation)(metadata_df.iloc(0)[i]) for i in range(NB_SAMPLE))
+    Parallel(n_jobs=200)(delayed(data_generation)(metadata_df.iloc(0)[i], seed) for (i, seed) in zip(range(NB_SAMPLE), range(SEED, NB_SAMPLE+SEED)))
     # data_generation(metadata_df.iloc(0)[1])
