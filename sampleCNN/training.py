@@ -8,6 +8,7 @@ import argparse
 import os
 from sampleCNN import MySampleCNN
 from get_data import get_dataset
+from earlystopper import EarlyStopper
 import wandb
 from torch.utils.data import DataLoader, Dataset, Subset, random_split, TensorDataset
 print("package imported ")
@@ -43,14 +44,20 @@ def get_training_args():
                         help='weight decay [default: 0.0]')
     parser.add_argument('--batch', type=int, default=64,
                         help='batch size [default: 64]')
-    parser.add_argument("--epochs", type=int, default=8,
-                        help="number of epoch for training")
+    parser.add_argument("--max_epoch", type=int, default=15,
+                        help="max number of epoch for training")
+    parser.add_argument("--min_epoch", type=int, default=7,
+                        help="min number of epoch for training")
     parser.add_argument("--optimizer", type=str, default="Adam",
                         help="optimizer used in training")
     parser.add_argument("--num_classes", type=int, default=2,
                         help="number of class labels [default: 2]")
     parser.add_argument("--clip_grad_norm", type=float, default=1.0,
                         help="maximum magnitude of gradient updated [default: 2]")
+    parser.add_argument("--patience", type=int, default=2,
+                        help="patience for early stopper")
+    parser.add_argument("--min_delta", type=float, default=0.01,
+                        help="min_delta for early stopper")
     args = parser.parse_args()
     return args
 
@@ -124,8 +131,9 @@ def train(model, train_loader, val_loader, args):
     else:
         loss_fcn = F.cross_entropy
     optimizer = getattr(torch.optim, args.optimizer)(model.parameters(), lr=args.lr, weight_decay=args.wd)
+    earlystopper = EarlyStopper(patience=args.patience, min_delta=args.min_delta)
     wandb.watch(model, loss_fcn, log="all", log_freq=1000)
-    for e in range(args.epochs):
+    for e in range(args.max_epoch):
         print("this is epoch", e)
         for t, (x, y) in enumerate(train_loader):
             x = x.to(device=device, dtype=dtype)  # move to device, e.g. GPU
@@ -141,8 +149,12 @@ def train(model, train_loader, val_loader, args):
             if t % print_every == 0:
                 print('Epoch: %d, Iteration %d, loss = %.4f' % (e, t, loss.item()))
                 train_log(loss, example_ct, e)
-        loss, accuracy, outputs = test(model, val_loader, args)
-        test_log(loss, accuracy, example_ct, e)
+            break
+        val_loss, val_accuracy, val_outputs = test(model, val_loader, args)
+        test_log(val_loss, val_accuracy, example_ct, e)
+        if earlystopper.early_stop(val_loss) and e >= args.min_epoch: 
+            break
+        break
 
 def train_and_log(train_args, model_args, data_args):
     with wandb.init(project="msc_project", job_type="train", config=train_args) as run:
@@ -216,6 +228,7 @@ def test(model, test_loader, args):
             print("scores", scores)
             print("preds:", preds, "y: ",y)
             print("num_correct:", num_correct, "num_samples:", num_samples)
+            break
     test_loss /= len(test_loader.dataset)
     acc = float(num_correct) / num_samples
     return test_loss, float(acc), outputs
@@ -224,20 +237,30 @@ def evaluate(model, test_loader, args):
     loss, accuracy, outputs = test(model, test_loader, args)
     return loss, accuracy, outputs
 
-def evaluate_and_log(wav_data_path, args=None):
-    with wandb.init(project="msc_project", job_type="report", config=args) as run:
+def evaluate_and_log(data_args, model_args=None):
+    with wandb.init(project="msc_project", job_type="report", config=model_args) as run:
         data = run.use_artifact('wav_dataset_exp001:latest')
         data_dir = data.download()
         data_dir = data_dir[2:]
+        same_dist_testdata = get_dataset(data_dir, "test", shift_type=data_args.shift_type, shift_strength=data_args.shift_strength,\
+            shift_way=data_args.shift_way)
+        anti_biased_testdata = get_dataset(data_dir, "test", shift_type=data_args.shift_type, shift_strength=data_args.shift_strength,\
+            shift_way=(data_args.shift_way)[::-1])
+        neutral_testdata = get_dataset(data_dir, "test", shift_type="domain_shift", shift_strength=0.5,\
+            shift_way=(data_args.shift_way))
         sine_test_data = get_dataset(data_dir, "test", waveshape="sine")
         square_test_data = get_dataset(data_dir, "test", waveshape="square")
         sawtooth_test_data = get_dataset(data_dir, "test", waveshape="sawtooth")
         triangle_test_data = get_dataset(data_dir, "test", waveshape="triangle")
 
-        sine_test_loader = DataLoader(sine_test_data, shuffle=False, batch_size=64)
-        sawtooth_test_loader = DataLoader(sawtooth_test_data, shuffle=False, batch_size=64)
-        square_test_loader = DataLoader(square_test_data, shuffle=False, batch_size=64)
-        triangle_test_loader = DataLoader(triangle_test_data, shuffle=False, batch_size=64)
+        batch_size = 64
+        same_dist_loader = DataLoader(same_dist_testdata, shuffle=False, batch_size=batch_size)
+        anti_biased_loader = DataLoader(anti_biased_testdata, shuffle=False, batch_size=batch_size)
+        neutral_dist_loader = DataLoader(neutral_testdata, shuffle=False, batch_size=batch_size)
+        sine_test_loader = DataLoader(sine_test_data, shuffle=False, batch_size=batch_size)
+        sawtooth_test_loader = DataLoader(sawtooth_test_data, shuffle=False, batch_size=batch_size)
+        square_test_loader = DataLoader(square_test_data, shuffle=False, batch_size=batch_size)
+        triangle_test_loader = DataLoader(triangle_test_data, shuffle=False, batch_size=batch_size)
 
         model_artifact = run.use_artifact("trained-sampleCNN:latest")
         model_dir = model_artifact.download()
@@ -249,16 +272,25 @@ def evaluate_and_log(wav_data_path, args=None):
         model.load_state_dict(torch.load(model_path))
         model.to(device)
 
+        same_dist_loss, same_dist_accuracy, same_dist_outputs = evaluate(model, same_dist_loader, args)
+        anti_biased_loss, anti_biased_accuracy, anti_biased_outputs = evaluate(model, anti_biased_loader, args)
+        neutral_loss, neutral_accuracy, neutral_outputs = evaluate(model, neutral_dist_loader, args)
         sine_loss, sine_accuracy, sine_outputs = evaluate(model, sine_test_loader, args)
         sawtooth_loss, sawtooth_accuracy, sawtooth_outputs = evaluate(model, sawtooth_test_loader, args)
         triangle_loss, triangle_accuracy, triangle_outputs = evaluate(model, triangle_test_loader, args)
         square_loss, square_accuracy, square_outputs = evaluate(model, square_test_loader, args)
 
+        same_dist_outputs = same_dist_outputs.numpy(force=True)
+        anti_biased_outputs = anti_biased_outputs.numpy(force=True)
+        neutral_outputs = neutral_outputs.numpy(force=True)
         sine_outputs = sine_outputs.numpy(force=True)
         sawtooth_outputs = sawtooth_outputs.numpy(force=True)
         triangle_outputs = triangle_outputs.numpy(force=True)
         square_outputs = square_outputs.numpy(force=True)      
 
+        np.savetxt('same_dist_outputs.txt', same_dist_outputs, fmt='%1.3f')
+        np.savetxt('anti_biased_outputs.txt', anti_biased_outputs, fmt='%1.3f')
+        np.savetxt('neutral_outputs.txt', neutral_outputs, fmt='%1.3f')
         np.savetxt('sine_outputs.txt', sine_outputs, fmt='%1.3f')
         np.savetxt('sawtooth_outputs.txt', sawtooth_outputs, fmt='%1.3f')
         np.savetxt('triangle_outputs.txt', triangle_outputs, fmt='%1.3f')
@@ -266,11 +298,17 @@ def evaluate_and_log(wav_data_path, args=None):
         run.summary.update({"sine_loss": sine_loss, "sine_accuracy": sine_accuracy,
                             "sawtooth_loss":sawtooth_loss, "sawtooth_accuracy":sawtooth_accuracy,
                             "square_loss":square_loss, "square_accuracy":square_accuracy,
-                            "triangle_loss": triangle_loss, "triangle_accuracy":triangle_accuracy})
+                            "triangle_loss": triangle_loss, "triangle_accuracy":triangle_accuracy,
+                            "same_dist_loss": same_dist_loss, "same_dist_accuracy":same_dist_accuracy,
+                            "anti_biased_loss":anti_biased_loss, "anti_biased_accuracy":anti_biased_accuracy,
+                            "neutral_loss":neutral_loss, "neutral_accuracy":neutral_accuracy})
         wandb.save("sine_outputs.txt")
         wandb.save("sawtooth_outputs.txt")
         wandb.save("triangle_outputs.txt")
         wandb.save("square_outputs.txt")
+        wandb.save("same_dist_outputs.txt")
+        wandb.save("anti_biased_outputs.txt")
+        wandb.save("neutral_outputs.txt")
     return None
 
 def train_log(loss, example_ct, epoch):
@@ -290,8 +328,9 @@ if __name__== "__main__":
     model_args = get_model_args()
     # load_and_log_data() # use if have new data
     # build_and_log_model(model_args) # use if have new model
-    waveshapes = ["sine", "square", "triangle", "sawtooth"]
-    for waveshape in waveshapes:
-        train_data_args = get_data_args(shift_type=None, shift_strength=0.0, shift_way=None, waveshape=waveshape)
+    strengths = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    for strength in strengths:
+        train_data_args = get_data_args(shift_type="sample_selection_bias", shift_strength=strength, shift_way=["sine", "square"],\
+            waveshape=None)
         train_and_log(train_args, model_args, train_data_args)
-        evaluate_and_log(model_args)
+        evaluate_and_log(train_data_args, None)
