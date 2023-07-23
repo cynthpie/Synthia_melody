@@ -149,12 +149,10 @@ def train(model, train_loader, val_loader, args):
             if t % print_every == 0:
                 print('Epoch: %d, Iteration %d, loss = %.4f' % (e, t, loss.item()))
                 train_log(loss, example_ct, e)
-            break
         val_loss, val_accuracy, val_outputs = test(model, val_loader, args)
         test_log(val_loss, val_accuracy, example_ct, e)
         if earlystopper.early_stop(val_loss) and e >= args.min_epoch: 
             break
-        break
 
 def train_and_log(train_args, model_args, data_args):
     with wandb.init(project="msc_project", job_type="train", config=train_args) as run:
@@ -228,7 +226,6 @@ def test(model, test_loader, args):
             print("scores", scores)
             print("preds:", preds, "y: ",y)
             print("num_correct:", num_correct, "num_samples:", num_samples)
-            break
     test_loss /= len(test_loader.dataset)
     acc = float(num_correct) / num_samples
     return test_loss, float(acc), outputs
