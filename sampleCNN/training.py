@@ -21,7 +21,6 @@ if USE_GPU and torch.cuda.is_available():
 else:
     device = torch.device('cpu')
 print(device)
-torch.cuda.manual_seed(5)
 
 def get_data_args(shift_type=None, shift_strength=0.0, shift_way=None, waveshape=None):
     parser = argparse.ArgumentParser(description='data_args')
@@ -58,6 +57,8 @@ def get_training_args():
                         help="patience for early stopper")
     parser.add_argument("--min_delta", type=float, default=0.01,
                         help="min_delta for early stopper")
+    parser.add_argument("--seed", type=int, default=55,
+                        help="torch seed to train model")
     args = parser.parse_args()
     return args
 
@@ -278,7 +279,7 @@ def evaluate_and_log(data_args, model_args=None):
         square_loss, square_accuracy, square_outputs = evaluate(model, square_test_loader, args)
 
         same_dist_outputs = same_dist_outputs.numpy(force=True)
-        anti_biased_outputs = anti_biased_outputs.numpy(force=True)
+        # anti_biased_outputs = anti_biased_outputs.numpy(force=True)
         # neutral_outputs = neutral_outputs.numpy(force=True)
         sine_outputs = sine_outputs.numpy(force=True)
         sawtooth_outputs = sawtooth_outputs.numpy(force=True)
@@ -296,9 +297,7 @@ def evaluate_and_log(data_args, model_args=None):
                             "sawtooth_loss":sawtooth_loss, "sawtooth_accuracy":sawtooth_accuracy,
                             "square_loss":square_loss, "square_accuracy":square_accuracy,
                             "triangle_loss": triangle_loss, "triangle_accuracy":triangle_accuracy,
-                            "same_dist_loss": same_dist_loss, "same_dist_accuracy":same_dist_accuracy,
-                            "anti_biased_loss":anti_biased_loss, "anti_biased_accuracy":anti_biased_accuracy,
-                            "neutral_loss":neutral_loss, "neutral_accuracy":neutral_accuracy})
+                            "same_dist_loss": same_dist_loss, "same_dist_accuracy":same_dist_accuracy})
         wandb.save("sine_outputs.txt")
         wandb.save("sawtooth_outputs.txt")
         wandb.save("triangle_outputs.txt")
@@ -323,6 +322,7 @@ if __name__== "__main__":
     print_every = 50
     train_args = get_training_args()
     model_args = get_model_args()
+    torch.cuda.manual_seed(train_args.seed) # 5, 55, 555
     # load_and_log_data() # use if have new data
     # build_and_log_model(model_args) # use if have new model
     train_data_len = 40000
