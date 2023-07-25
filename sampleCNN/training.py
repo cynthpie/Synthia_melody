@@ -45,7 +45,7 @@ def get_training_args():
                         help='batch size [default: 64]')
     parser.add_argument("--max_epoch", type=int, default=15,
                         help="max number of epoch for training")
-    parser.add_argument("--min_epoch", type=int, default=7,
+    parser.add_argument("--min_epoch", type=int, default=10,
                         help="min number of epoch for training")
     parser.add_argument("--optimizer", type=str, default="Adam",
                         help="optimizer used in training")
@@ -242,10 +242,10 @@ def evaluate_and_log(data_args, model_args=None):
         data_dir = data_dir[2:]
         same_dist_testdata = get_dataset(data_dir, "test", shift_type=data_args.shift_type, shift_strength=data_args.shift_strength,\
             shift_way=data_args.shift_way)
-        # anti_biased_testdata = get_dataset(data_dir, "test", shift_type=data_args.shift_type, shift_strength=data_args.shift_strength,\
-        #     shift_way=(data_args.shift_way)[::-1])
-        # neutral_testdata = get_dataset(data_dir, "test", shift_type="domain_shift", shift_strength=0.5,\
-        #     shift_way=(data_args.shift_way))
+        anti_biased_testdata = get_dataset(data_dir, "test", shift_type=data_args.shift_type, shift_strength=data_args.shift_strength,\
+            shift_way=(data_args.shift_way)[::-1])
+        neutral_testdata = get_dataset(data_dir, "test", shift_type="domain_shift", shift_strength=0.5,\
+            shift_way=(data_args.shift_way))
         sine_test_data = get_dataset(data_dir, "test", waveshape="sine")
         square_test_data = get_dataset(data_dir, "test", waveshape="square")
         sawtooth_test_data = get_dataset(data_dir, "test", waveshape="sawtooth")
@@ -253,8 +253,8 @@ def evaluate_and_log(data_args, model_args=None):
 
         batch_size = 64
         same_dist_loader = DataLoader(same_dist_testdata, shuffle=False, batch_size=batch_size)
-        # anti_biased_loader = DataLoader(anti_biased_testdata, shuffle=False, batch_size=batch_size)
-        # neutral_dist_loader = DataLoader(neutral_testdata, shuffle=False, batch_size=batch_size)
+        anti_biased_loader = DataLoader(anti_biased_testdata, shuffle=False, batch_size=batch_size)
+        neutral_dist_loader = DataLoader(neutral_testdata, shuffle=False, batch_size=batch_size)
         sine_test_loader = DataLoader(sine_test_data, shuffle=False, batch_size=batch_size)
         sawtooth_test_loader = DataLoader(sawtooth_test_data, shuffle=False, batch_size=batch_size)
         square_test_loader = DataLoader(square_test_data, shuffle=False, batch_size=batch_size)
@@ -271,24 +271,24 @@ def evaluate_and_log(data_args, model_args=None):
         model.to(device)
 
         same_dist_loss, same_dist_accuracy, same_dist_outputs = evaluate(model, same_dist_loader, args)
-        # anti_biased_loss, anti_biased_accuracy, anti_biased_outputs = evaluate(model, anti_biased_loader, args)
-        # neutral_loss, neutral_accuracy, neutral_outputs = evaluate(model, neutral_dist_loader, args)
+        anti_biased_loss, anti_biased_accuracy, anti_biased_outputs = evaluate(model, anti_biased_loader, args)
+        neutral_loss, neutral_accuracy, neutral_outputs = evaluate(model, neutral_dist_loader, args)
         sine_loss, sine_accuracy, sine_outputs = evaluate(model, sine_test_loader, args)
         sawtooth_loss, sawtooth_accuracy, sawtooth_outputs = evaluate(model, sawtooth_test_loader, args)
         triangle_loss, triangle_accuracy, triangle_outputs = evaluate(model, triangle_test_loader, args)
         square_loss, square_accuracy, square_outputs = evaluate(model, square_test_loader, args)
 
         same_dist_outputs = same_dist_outputs.numpy(force=True)
-        # anti_biased_outputs = anti_biased_outputs.numpy(force=True)
-        # neutral_outputs = neutral_outputs.numpy(force=True)
+        anti_biased_outputs = anti_biased_outputs.numpy(force=True)
+        neutral_outputs = neutral_outputs.numpy(force=True)
         sine_outputs = sine_outputs.numpy(force=True)
         sawtooth_outputs = sawtooth_outputs.numpy(force=True)
         triangle_outputs = triangle_outputs.numpy(force=True)
         square_outputs = square_outputs.numpy(force=True)      
 
         np.savetxt('same_dist_outputs.txt', same_dist_outputs, fmt='%1.3f')
-        # np.savetxt('anti_biased_outputs.txt', anti_biased_outputs, fmt='%1.3f')
-        # np.savetxt('neutral_outputs.txt', neutral_outputs, fmt='%1.3f')
+        np.savetxt('anti_biased_outputs.txt', anti_biased_outputs, fmt='%1.3f')
+        np.savetxt('neutral_outputs.txt', neutral_outputs, fmt='%1.3f')
         np.savetxt('sine_outputs.txt', sine_outputs, fmt='%1.3f')
         np.savetxt('sawtooth_outputs.txt', sawtooth_outputs, fmt='%1.3f')
         np.savetxt('triangle_outputs.txt', triangle_outputs, fmt='%1.3f')
@@ -297,14 +297,16 @@ def evaluate_and_log(data_args, model_args=None):
                             "sawtooth_loss":sawtooth_loss, "sawtooth_accuracy":sawtooth_accuracy,
                             "square_loss":square_loss, "square_accuracy":square_accuracy,
                             "triangle_loss": triangle_loss, "triangle_accuracy":triangle_accuracy,
+                            "anti_bias_loss": anti_biased_loss, "anti_bias_accuracy":anti_biased_accuracy,
+                            "neutral_loss": neutral_loss, "neutral_accuracy":neutral_accuracy,
                             "same_dist_loss": same_dist_loss, "same_dist_accuracy":same_dist_accuracy})
         wandb.save("sine_outputs.txt")
         wandb.save("sawtooth_outputs.txt")
         wandb.save("triangle_outputs.txt")
         wandb.save("square_outputs.txt")
         wandb.save("same_dist_outputs.txt")
-        # wandb.save("anti_biased_outputs.txt")
-        # wandb.save("neutral_outputs.txt")
+        wandb.save("anti_biased_outputs.txt")
+        wandb.save("neutral_outputs.txt")
     return None
 
 def train_log(loss, example_ct, epoch):
@@ -326,8 +328,8 @@ if __name__== "__main__":
     # load_and_log_data() # use if have new data
     # build_and_log_model(model_args) # use if have new model
     train_data_len = 40000
-    strengths = [2/train_data_len, 6/train_data_len, 10/train_data_len, 50/train_data_len, 100/train_data_len, 400/train_data_len,\
-        1000/train_data_len, 2000/train_data_len, 4000/train_data_len]
+    strengths = [0, 2/train_data_len, 6/train_data_len, 10/train_data_len, 50/train_data_len, 100/train_data_len, 400/train_data_len,\
+        1000/train_data_len, 2000/train_data_len, 4000/train_data_len, 10000/train_data_len]
     for strength in strengths:
         train_data_args = get_data_args(shift_type="domain_shift", shift_strength=strength, shift_way=["sine", "square"],\
             waveshape=None)
