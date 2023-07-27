@@ -57,7 +57,7 @@ def get_training_args():
                         help="patience for early stopper")
     parser.add_argument("--min_delta", type=float, default=0.01,
                         help="min_delta for early stopper")
-    parser.add_argument("--seed", type=int, default=55,
+    parser.add_argument("--seed", type=int, default=555,
                         help="torch seed to train model")
     args = parser.parse_args()
     return args
@@ -329,7 +329,8 @@ if __name__== "__main__":
     # build_and_log_model(model_args) # use if have new model
     train_data_len = 40000
     strengths = [0, 2/train_data_len, 6/train_data_len, 10/train_data_len, 50/train_data_len, 100/train_data_len, 400/train_data_len,\
-        1000/train_data_len, 2000/train_data_len, 4000/train_data_len, 10000/train_data_len]
+        1000/train_data_len, 2000/train_data_len, 4000/train_data_len, 10000/train_data_len, 20000/train_data_len, \
+        30000/train_data_len, 40000/train_data_len]
     for strength in strengths:
         train_data_args = get_data_args(shift_type="domain_shift", shift_strength=strength, shift_way=["sine", "square"],\
             waveshape=None)
