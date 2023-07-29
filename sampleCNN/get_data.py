@@ -6,7 +6,7 @@ from dataset import CynthiaDataset
 from torch.utils.data import DataLoader, Dataset, random_split, TensorDataset, Subset, ConcatDataset
 import pandas as pd
 
-def get_dataset(data_dir, usage, shift_type=None, waveshape=None, shift_strength=0, shift_way=None):
+def get_dataset(data_dir, usage, shift_type=None, waveshape=None, shift_strength=0, shift_way=None, domain_label=False):
     """
     Function to build dataset shift scenario from preprocessed data
     Args:
@@ -19,6 +19,7 @@ def get_dataset(data_dir, usage, shift_type=None, waveshape=None, shift_strength
             domain_shift in the form: [orig_shape, shift_shape]. E.g. ["sine", "square"]
             sample_selecti_bias in the form: [orig_shape, shift_shape]. Major associated with orig_shape. E.g. ["sine", "square"]
             If no shift, shift_way = None
+        - domain_label (bool): whether to return dataset with domain label. e.g. sine=0, square=1. For DANN.
     Return:
         - dataset (torch.utils.data.Subset): train dataset with specified shift
     """
@@ -42,6 +43,13 @@ def get_dataset(data_dir, usage, shift_type=None, waveshape=None, shift_strength
         dataset1 = torch.load(data_dir + f"/{shift_way[0]}_{usage}_ds.pt")
         dataset2 = torch.load(data_dir + f"/{shift_way[1]}_{usage}_ds.pt")
         data_len = len(dataset1)
+        if domain_label:
+            x, y = dataset1.tensors
+            d = torch.zeros(data_len)
+            dataset1.tensors = (x, y, d)
+            x, y = dataset2.tensors
+            d = torch.ones(data_len)
+            dataset2.tensors = (x, y, d)
 
     # extract data
     if shift_type is None:
@@ -78,5 +86,9 @@ def get_dataset(data_dir, usage, shift_type=None, waveshape=None, shift_strength
     return None
 
 if __name__ == "__main__":
-    data = get_dataset(data_dir="", usage="val", shift_type="sample_selection_bias", shift_strength=1, shift_way=["sine", "square"])
+    data = get_dataset(data_dir="", usage="val", shift_type="domain_shift", shift_strength=0.5, \
+        shift_way=["sine", "square"], domain_label=True)
     print(data, len(data))
+    dl = DataLoader(data, batch_size=10, shuffle=True)
+    for t, (x, y, d) in enumerate(dl):
+        print((x,y,d))
