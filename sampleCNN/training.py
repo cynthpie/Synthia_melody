@@ -57,7 +57,7 @@ def get_training_args():
                         help="patience for early stopper")
     parser.add_argument("--min_delta", type=float, default=0.01,
                         help="min_delta for early stopper")
-    parser.add_argument("--seed", type=int, default=555,
+    parser.add_argument("--seed", type=int, default=55555,
                         help="torch seed to train model")
     args = parser.parse_args()
     return args
@@ -156,7 +156,7 @@ def train(model, train_loader, val_loader, args):
             break
 
 def train_and_log(train_args, model_args, data_args):
-    with wandb.init(project="msc_project", job_type="train", config=train_args) as run:
+    with wandb.init(project="msc_project", job_type=f"{data_args.shift_type}_train", config=train_args) as run:
         config = wandb.config
         data = run.use_artifact('wav_dataset_exp001:latest')
         data_dir = data.download()
@@ -236,7 +236,10 @@ def evaluate(model, test_loader, args):
     return loss, accuracy, outputs
 
 def evaluate_and_log(data_args, model_args=None):
-    with wandb.init(project="msc_project", job_type="report", config=model_args) as run:
+    with wandb.init(project="msc_project", job_type=f"{data_args.shift_type}_eval", config=model_args) as run:
+        config = wandb.config
+        data_config = vars(data_args)
+        config.update(data_config)
         data = run.use_artifact('wav_dataset_exp001:latest')
         data_dir = data.download()
         data_dir = data_dir[2:]
@@ -264,6 +267,7 @@ def evaluate_and_log(data_args, model_args=None):
         model_dir = model_artifact.download()
         model_path = os.path.join(model_dir, "trained_model.pth")
         model_config = model_artifact.metadata
+        config.update(model_config)
         args = argparse.Namespace(**model_config) 
 
         model = MySampleCNN(args)
@@ -324,15 +328,13 @@ if __name__== "__main__":
     print_every = 50
     train_args = get_training_args()
     model_args = get_model_args()
-    torch.cuda.manual_seed(train_args.seed) # 5, 55, 555
+    torch.cuda.manual_seed(train_args.seed) # 5, 55, 555, 5555, 55555
     # load_and_log_data() # use if have new data
     # build_and_log_model(model_args) # use if have new model
     train_data_len = 40000
-    strengths = [0, 2/train_data_len, 6/train_data_len, 10/train_data_len, 50/train_data_len, 100/train_data_len, 400/train_data_len,\
-        1000/train_data_len, 2000/train_data_len, 4000/train_data_len, 10000/train_data_len, 20000/train_data_len, \
-        30000/train_data_len, 40000/train_data_len]
+    strengths = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
     for strength in strengths:
-        train_data_args = get_data_args(shift_type="domain_shift", shift_strength=strength, shift_way=["sine", "square"],\
+        train_data_args = get_data_args(shift_type="sample_selection_bias", shift_strength=strength, shift_way=["sine", "square"],\
             waveshape=None)
         train_and_log(train_args, model_args, train_data_args)
         evaluate_and_log(train_data_args, None)
