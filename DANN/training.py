@@ -52,7 +52,7 @@ def get_training_args(a, a_upper, l):
                         help='weight decay [default: 0.0]')
     parser.add_argument('--batch', type=int, default=32,
                         help='batch size [default: 64]')
-    parser.add_argument("--max_epoch", type=int, default=40,
+    parser.add_argument("--max_epoch", type=int, default=30,
                         help="max number of epoch for training")
     parser.add_argument("--min_epoch", type=int, default=15,
                         help="min number of epoch for training")
@@ -60,7 +60,7 @@ def get_training_args(a, a_upper, l):
                         help="optimizer used in training")
     parser.add_argument("--optimizer_c", type=str, default="Adam",
                         help="optimizer used in training")
-    parser.add_argument("--optimizer_d", type=str, default="SGD",
+    parser.add_argument("--optimizer_d", type=str, default="Adam",
                         help="optimizer used in training")
     parser.add_argument("--momentum", type=float, default=0.0,
                         help="momentum in SGD")
@@ -70,7 +70,11 @@ def get_training_args(a, a_upper, l):
                          help="beta in adam")
     parser.add_argument("--num_classes", type=int, default=2,
                         help="number of class labels [default: 2]")
-    parser.add_argument("--clip_grad_norm", type=float, default=1.0,
+    parser.add_argument("--clip_grad_norm_c", type=float, default=1.0,
+                        help="maximum magnitude of gradient updated [default: 2]")
+    parser.add_argument("--clip_grad_norm_e", type=float, default=1.0,
+                        help="maximum magnitude of gradient updated [default: 2]")
+    parser.add_argument("--clip_grad_norm_d", type=float, default=1.0,
                         help="maximum magnitude of gradient updated [default: 2]")
     parser.add_argument("--patience", type=int, default=2,
                         help="patience for early stopper")
@@ -86,7 +90,13 @@ def get_training_args(a, a_upper, l):
                         help="torch seed to train model")
     parser.add_argument("--neg_slope", type=float, default=0.0,
                         help="torch seed to train model")
-    parser.add_argument("--lr_d", type=float, default=l*2,
+    parser.add_argument("--lr_d", type=float, default=l,
+                        help="torch seed to train model")
+    parser.add_argument("--e_update_per_d", type=int, default=1,
+                        help="torch seed to train model")
+    parser.add_argument("--reverse_layer", type=bool, default=False,
+                        help="torch seed to train model")
+    parser.add_argument("--flip_label", type=bool, default=False,
                         help="torch seed to train model")
     args = parser.parse_args()
     return args
@@ -103,7 +113,7 @@ def get_discriminator_args():
                         help="number of class labels [default: 2]")
     parser.add_argument("--num_blocks_d", type=bool, default=1,
                         help="number of class labels [default: 2]")
-    parser.add_argument("--num_blocks_d2", type=bool, default=2,
+    parser.add_argument("--num_blocks_d2", type=bool, default=1,
                         help="number of class labels [default: 2]")
     args = parser.parse_args()
     return args
@@ -183,13 +193,16 @@ def train(extractor, classifier, discriminator, train_loader, val_loader, args, 
     optimizerC = getattr(torch.optim, args.optimizer_c)(classifier.parameters(), lr=args.lr, weight_decay=args.wd_c, \
         betas=(args.beta1, args.beta2))
     optimizerD = getattr(torch.optim, args.optimizer_d)(discriminator.parameters(), lr=args.lr_d, weight_decay=args.wd_d, \
-        momentum=args.momentum)
+        betas=(args.beta1, args.beta2))
     optimizerE = getattr(torch.optim, args.optimizer_e)(extractor.parameters(), lr=args.lr, weight_decay=args.wd_e, \
         betas=(args.beta1, args.beta2))
     earlystopper = EarlyStopper(patience=args.patience, min_delta=args.min_delta)
     wandb.watch(extractor, loss_fcn, log="all", log_freq=1000)
     wandb.watch(classifier, loss_fcn, log="all", log_freq=1000)
     wandb.watch(discriminator, loss_fcn, log="all", log_freq=1000)
+    domain_val_acc = torch.tensor([0.0]).to(device=device)
+    class_loss = torch.tensor([-1]).to(device=device)
+    is_pretrained = True
     for e in range(args.max_epoch):
         print("this is epoch", e)
         for t, (x, y, d) in enumerate(train_loader):
@@ -197,26 +210,15 @@ def train(extractor, classifier, discriminator, train_loader, val_loader, args, 
             y = y.to(device=device, dtype=dtype) if args.num_classes==2 else y.to(device=device, dtype=torch.long) 
             d = d.to(device=device, dtype=dtype) # domain label
 
+            # train encoder, classifier and discriminator with different batches
+            x1, x2 = torch.tensor_split(x, 2)
+            y1, y2 = torch.tensor_split(y, 2)
+            d1, d2 = torch.tensor_split(d, 2)
             optimizerC.zero_grad()
             optimizerD.zero_grad()
             optimizerE.zero_grad()
-            
-            # train classifier and discriminator
-            extractor.eval()
-            classifier.train()
-            discriminator.train()
 
-            # classification loss
-            feature = extractor(x)
-            class_scores = torch.squeeze(classifier(feature.detach()))
-            class_loss = loss_fcn(class_scores, y)
-            class_loss.backward()
-            torch.nn.utils.clip_grad_norm_(classifier.parameters(), args.clip_grad_norm)
-            optimizerC.step()
-
-            # discriminator
-            alpha = (args.alpha_upper - args.alpha)*e / args.max_epoch + args.alpha
-            domain_scores = torch.squeeze(discriminator(feature.detach(), alpha))
+            # define discriminator loss function
             if data_args.shift_type == "domain_shift":
                 weights = [data_args.shift_strength, 1-data_args.shift_strength]
                 loss_weights = torch.ones(len(d)).to(device=device)
@@ -232,28 +234,75 @@ def train(extractor, classifier, discriminator, train_loader, val_loader, args, 
                 discriminator_loss_fcn = nn.BCELoss(weight=loss_weights)
             else:
                 discriminator_loss_fcn = nn.BCELoss()
-            domain_loss = discriminator_loss_fcn(domain_scores, d)
-            domain_loss.backward()
-            torch.nn.utils.clip_grad_norm_(discriminator.parameters(), args.clip_grad_norm)
-            optimizerD.step()
+            
+            # train extrator and discriminator first
+            # if (domain_val_acc > 0.55 or domain_val_acc < 0.45):
+            if False:
+                if t %  (args.e_update_per_d) == 0:
+                    discriminator.train()
+                    classifier.eval()
+                    extractor.eval()
+                    feature = extractor(x)
+                    alpha = args.alpha
+                    domain_scores = torch.squeeze(discriminator(feature.detach(), alpha))
+                    domain_loss = discriminator_loss_fcn(domain_scores, d)
+                    optimizerD.zero_grad()
+                    domain_loss.backward()
+                    torch.nn.utils.clip_grad_norm_(discriminator.parameters(), args.clip_grad_norm_d)
+                    optimizerD.step()
+                # train encoder
+                extractor.train()
+                discriminator.eval()
+                feature = extractor(x)
+                domain_scores = torch.squeeze(discriminator(feature, alpha))
+                d = (d-1)*-1
+                domain_loss = - discriminator_loss_fcn(domain_scores, d) # add negative here
+                optimizerE.zero_grad()
+                domain_loss.backward()
+                torch.nn.utils.clip_grad_norm_(extractor.parameters(), args.clip_grad_norm_e)
+                optimizerE.step()
 
-            # train encoder
-            extractor.train()
-            classifier.eval()
-            discriminator.eval()
+            # train classifier and discriminator
+            else:
+                extractor.eval()
+                classifier.train()
+                discriminator.train()
 
-            feature = extractor(x)
-            domain_scores = torch.squeeze(discriminator(feature, alpha))
-            d = (d-1) * -1 # flip the label
-            domain_loss = discriminator_loss_fcn(domain_scores, d)
+                # classification loss
+                feature = extractor(x1)
+                class_scores = torch.squeeze(classifier(feature.detach()))
+                class_loss = loss_fcn(class_scores, y1)
+                class_loss.backward()
+                torch.nn.utils.clip_grad_norm_(classifier.parameters(), args.clip_grad_norm_c)
+                optimizerC.step()
 
-            class_scores = torch.squeeze(classifier(feature))
-            class_loss = loss_fcn(class_scores, y)
+                # discriminator
+                alpha = (args.alpha_upper - args.alpha)*e / args.max_epoch + args.alpha
+                domain_scores = torch.squeeze(discriminator(feature.detach(), alpha))
+                domain_loss = discriminator_loss_fcn(domain_scores, d1)
+                domain_loss.backward()
+                torch.nn.utils.clip_grad_norm_(discriminator.parameters(), args.clip_grad_norm_d)
+                optimizerD.step()
 
-            e_loss = domain_loss + class_loss
-            e_loss.backward()
-            torch.nn.utils.clip_grad_norm_(extractor.parameters(), args.clip_grad_norm)
-            optimizerE.step()
+                # train encoder
+                extractor.train()
+                classifier.eval()
+                discriminator.eval()
+
+                feature = extractor(x2)
+                domain_scores = torch.squeeze(discriminator(feature, alpha))
+                # d = (d-1) * -1 # flip the label
+                domain_loss = discriminator_loss_fcn(domain_scores, d2)
+
+                class_scores = torch.squeeze(classifier(feature))
+                class_loss = loss_fcn(class_scores, y2)
+
+                e_loss = -domain_loss * alpha + class_loss
+                optimizerE.zero_grad()
+                e_loss.backward()
+                torch.nn.utils.clip_grad_norm_(extractor.parameters(), args.clip_grad_norm_e)
+                optimizerE.step()
+            print("domain_train_scores:",  domain_scores)
             example_ct += len(x)
             if t % print_every == 0:
                 print('Epoch: %d, Iteration %d, loss = %.4f' % (e, t, class_loss.item()))
@@ -261,7 +310,7 @@ def train(extractor, classifier, discriminator, train_loader, val_loader, args, 
                 train_log(class_loss, domain_loss, example_ct, e)
         class_val_loss, domain_val_loss, class_val_acc, domain_val_acc, class_val_outputs, domain_val_outputs = \
                 test(extractor, classifier, discriminator, val_loader, args, data_args)
-        print(class_val_outputs)
+        print("domain_train_outputs:", domain_val_outputs)
         test_log(class_val_loss, domain_val_loss, class_val_acc, domain_val_acc, example_ct, e)
         # if earlystopper.early_stop(class_val_loss) and e >= args.min_epoch: 
         #     break
@@ -566,8 +615,8 @@ def test_log(class_loss, domain_loss, class_acc, domain_acc, example_ct, epoch):
     print(f"domain_loss/accuracy after " + str(example_ct).zfill(5) + f" examples: {domain_loss:.3f}/{domain_acc:.3f}")
 
 if __name__ == "__main__":
-    alphas = [3]
-    a_uppers = [10]
+    alphas = [0.5]
+    a_uppers = [1.0]
     lrs = [0.00005]
     for a in alphas:
         for l in lrs:
@@ -582,4 +631,3 @@ if __name__ == "__main__":
                 build_and_log_model(extractor_args, classifier_args, discriminator_args)
                 train_and_log(training_args, extractor_args, classifier_args, discriminator_args, data_args)
                 evaluate_and_log(data_args, training_args)
-
