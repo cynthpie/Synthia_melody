@@ -5,6 +5,7 @@ import math
 from module import RevGrad
 import os, sys
 from torch.autograd import Function
+import argparse
 
 class Resblock(nn.Module):
     def __init__(self, inchannel, outchannel, stride=1):
@@ -12,7 +13,7 @@ class Resblock(nn.Module):
         self.left = nn.Sequential(
             nn.Conv1d(inchannel, outchannel, kernel_size=3, stride=stride, padding=1, bias=False),
             nn.BatchNorm1d(outchannel),
-            nn.ReLU(inplace=True),
+            nn.LeakyReLU(inplace=True),
             nn.Dropout(p=0.2),
             nn.Conv1d(outchannel, outchannel, kernel_size=3, stride=1, padding=1, bias=False),
             nn.BatchNorm1d(outchannel)
@@ -28,7 +29,7 @@ class Resblock(nn.Module):
     def forward(self, x):
         out = self.left(x)
         out += self.shortcut(x)
-        out = F.relu(out)
+        out = F.leaky_relu(out)
         out = self.maxpool(out)
         return out
 
@@ -44,14 +45,16 @@ class SampleCNN(nn.Module):
         self.conv1 = nn.Sequential(
             nn.Conv1d(1, args.foc, kernel_size = 3, stride = 3, padding = 1, bias = False), 
             nn.BatchNorm1d(args.foc), 
-            nn.ReLU()
+            nn.LeakyReLU()
         )
-        self.layer1 = self.make_layer(Resblock, args.foc*2, 5, stride = 1)
-        # self.layer2 = self.make_layer(Resblock, args.foc*4, 1, stride = 1) # reduce layer here
+        self.layer1 = self.make_layer(Resblock, args.foc*2, args.num_block_e, stride = 1)
+        # self.layer2 = self.make_layer(Resblock, args.foc*4, 5, stride = 1) # reduce layer here
         self.conv2 = nn.Conv1d(args.foc*4, num_classes, kernel_size=1, stride=1, padding=0, bias=False)
         self.remove_classifier = args.remove_classifier
 
     def make_layer(self, block, channels, num_blocks, stride):
+        if num_blocks == 0:
+            return nn.Sequential()
         strides = [stride] + [1] * (num_blocks - 1)
         layers = []
         for stride in strides:
@@ -93,7 +96,7 @@ class Classifier(nn.Module):
         if args.stronger_clas:
             self.classifier = nn.Sequential(
                 nn.Conv1d(args.foc*4, args.foc*2, kernel_size=1, stride=1, padding=0, bias=False),
-                nn.ReLU(inplace=True),
+                nn.LeakyReLU(inplace=True),
                 nn.BatchNorm1d(args.foc*2),
                 nn.Dropout(p=args.drop_out_rate_c),
                 nn.Conv1d(args.foc*2, num_classes, kernel_size=1, stride=1, padding=0, bias=False)
@@ -102,9 +105,12 @@ class Classifier(nn.Module):
             self.classifier = nn.Sequential(
                 nn.Conv1d(args.foc*4, num_classes, kernel_size=1, stride=1, padding=0, bias=False)
             )
-        self.layer1 = self.make_layer(Resblock, args.foc*4, args.num_blocks_c, stride = 1)
+        self.layer1 = self.make_layer(Resblock, args.foc*4, args.num_blocks_c2, stride = 1)
+        self.layer2 = self.make_layer(Resblock, args.foc*2, args.num_blocks_c, stride = 1)
 
     def make_layer(self, block, channels, num_blocks, stride):
+        if num_blocks == 0:
+            return nn.Sequential()
         strides = [stride] + [1] * (num_blocks - 1)
         layers = []
         for stride in strides:
@@ -114,6 +120,7 @@ class Classifier(nn.Module):
 
     def forward(self, x):
         x = self.layer1(x)
+        x = self.layer2(x)
         x = self.classifier(x)
         return torch.sigmoid(x)
 
@@ -132,17 +139,24 @@ class Discriminator(nn.Module):
                 nn.Dropout(p=args.drop_out_rate_d),
                 nn.Conv1d(args.foc*4, args.foc*2, kernel_size=1, stride=1, padding=0, bias=False),
                 nn.BatchNorm1d(args.foc*2),
-                nn.ReLU(inplace=True),
+                nn.LeakyReLU(inplace=True),
                 nn.Conv1d(args.foc*2, num_domain, kernel_size=1, stride=1, padding=0, bias=False)
             )
         else:
             self.discriminator = nn.Sequential(
                 nn.Dropout(p=args.drop_out_rate_d),
-                nn.Conv1d(args.foc*4, num_domain, kernel_size=1, stride=1, padding=0, bias=False)
+                nn.Conv1d(args.foc*2, args.foc*2, kernel_size=3, stride=3, padding=0, bias=False),
+                # nn.MaxPool1d(3),
+                # nn.Conv1d(args.foc*2, args.foc*2, kernel_size=3, stride=3, padding=0, bias=False),
+                #nn.MaxPool1d(3),
+                nn.Conv1d(args.foc*2, num_domain, kernel_size=1, stride=1, padding=0, bias=False)
             )
-        self.layer1 = self.make_layer(Resblock, args.foc*4, args.num_blocks_d, stride = 1)
+        self.layer1 = self.make_layer(Resblock, args.foc*4, args.num_blocks_d2, stride = 1)
+        self.layer2 = self.make_layer(Resblock, args.foc*2, args.num_blocks_d, stride = 1)
 
     def make_layer(self, block, channels, num_blocks, stride):
+        if num_blocks == 0:
+            return nn.Sequential()
         strides = [stride] + [1] * (num_blocks - 1)
         layers = []
         for stride in strides:
@@ -151,8 +165,9 @@ class Discriminator(nn.Module):
         return nn.Sequential(*layers)
     
     def forward(self, x, alpha):
-        reversed_input = ReverseLayerF.apply(x, alpha)
+        # x = ReverseLayerF.apply(x, alpha)
         x = self.layer1(x)
+        x = self.layer2(x)
         x = self.discriminator(x)
         return torch.sigmoid(x)
 
@@ -165,5 +180,68 @@ class ReverseLayerF(Function):
     @staticmethod
     def backward(ctx, grad_output):
         if ctx.needs_input_grad[0]:
-            output = grad_output * ctx.alpha # remove negative here
+            output = grad_output.neg() * ctx.alpha # remove negative here
         return output, None
+
+def get_discriminator_args():
+    parser = argparse.ArgumentParser(description='discriminator_args')
+    parser.add_argument('--foc', type=int, default=64,
+                        help='out-channel of first Conv1D in SampleCNN [default: 64]')
+    parser.add_argument("--num_domain", type=int, default=2,
+                        help="number of domain in training and testing data [default: 2]")
+    parser.add_argument("--drop_out_rate_d", type=float, default=0.5,
+                        help="number of class labels [default: 2]")
+    parser.add_argument("--stronger_dis", type=bool, default=False,
+                        help="number of class labels [default: 2]")
+    parser.add_argument("--num_blocks_d", type=bool, default=0,
+                        help="number of class labels [default: 2]")
+    parser.add_argument("--num_blocks_d2", type=bool, default=4,
+                        help="number of class labels [default: 2]")
+    args = parser.parse_args()
+    return args
+
+def get_extractor_args():
+    parser = argparse.ArgumentParser(description='extractor_args')
+    parser.add_argument('--foc', type=int, default=64,
+                        help='out-channel of first Conv1D in SampleCNN [default: 64]')
+    parser.add_argument("--num_classes", type=int, default=2,
+                        help="number of class labels [default: 2]")
+    parser.add_argument("--remove_classifier", type=bool, default=True,
+                        help="remove last convolution layer in the model for DANN [default: 2]")
+    parser.add_argument("--num_block_e", type=int, default=5,
+                        help="remove last convolution layer in the model for DANN [default: 2]")
+    args = parser.parse_args()
+    return args
+
+def get_classifier_args():
+    parser = argparse.ArgumentParser(description='extractor_args')
+    parser.add_argument('--foc', type=int, default=64,
+                        help='out-channel of first Conv1D in SampleCNN [default: 64]')
+    parser.add_argument("--num_classes", type=int, default=2,
+                        help="number of class labels [default: 2]")
+    parser.add_argument("--drop_out_rate_c", type=float, default=0.2,
+                        help="number of class labels [default: 2]")
+    parser.add_argument("--stronger_clas", type=bool, default=False,
+                        help="number of class labels [default: 2]")
+    parser.add_argument("--num_blocks_c", type=bool, default=0,
+                        help="number of class labels [default: 2]")
+    parser.add_argument("--num_blocks_c2", type=bool, default=4,
+                        help="number of class labels [default: 2]")
+    args = parser.parse_args()
+    return args
+
+if __name__=="__main__":
+    batch_size = 3
+    data = torch.rand(batch_size ,1, 64323)
+    args_d= get_discriminator_args()
+    args_e= get_extractor_args()
+    args_c = get_classifier_args()
+    e = FeatureExtractor(args_e)
+    d = Discriminator(args_d)
+    c = Classifier(args_c)
+    f = e(data)
+    x = d(f, 3)
+    print(x.size())
+    x = c(f)
+    print(x.size())
+
