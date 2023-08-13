@@ -129,6 +129,8 @@ class Discriminator(nn.Module):
         self.layer1 = self.make_layer(Resblock, args.foc*4, args.num_blocks_d2, stride = 1)
         self.layer2 = self.make_layer(Resblock, args.foc*2, args.num_blocks_d, stride = 1)
         self.discriminator = nn.Sequential(
+            nn.Conv1d(self.inchannel, self.inchannel, kernel_size=3, stride=3, padding=0, bias=False),
+            nn.MaxPool1d(3),
             nn.Conv1d(self.inchannel, num_domain, kernel_size=1, stride=1, padding=0, bias=False),
         )
 
@@ -173,7 +175,7 @@ def get_discriminator_args():
                         help="number of class labels [default: 2]")
     parser.add_argument("--num_blocks_d", type=bool, default=0,
                         help="number of class labels [default: 2]")
-    parser.add_argument("--num_blocks_d2", type=bool, default=4,
+    parser.add_argument("--num_blocks_d2", type=bool, default=2,
                         help="number of class labels [default: 2]")
     args = parser.parse_args()
     return args

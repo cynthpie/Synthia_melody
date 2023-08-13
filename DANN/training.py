@@ -50,7 +50,7 @@ def get_training_args(a, a_upper, l):
                         help='weight decay [default: 0.0]')
     parser.add_argument('--wd_e', type=float, default=0.0,
                         help='weight decay [default: 0.0]')
-    parser.add_argument('--batch', type=int, default=32,
+    parser.add_argument('--batch', type=int, default=64,
                         help='batch size [default: 64]')
     parser.add_argument("--max_epoch", type=int, default=30,
                         help="max number of epoch for training")
@@ -72,7 +72,7 @@ def get_training_args(a, a_upper, l):
                         help="number of class labels [default: 2]")
     parser.add_argument("--clip_grad_norm_c", type=float, default=1.0,
                         help="maximum magnitude of gradient updated [default: 2]")
-    parser.add_argument("--clip_grad_norm_e", type=float, default=1.0,
+    parser.add_argument("--clip_grad_norm_e", type=float, default=3.0,
                         help="maximum magnitude of gradient updated [default: 2]")
     parser.add_argument("--clip_grad_norm_d", type=float, default=1.0,
                         help="maximum magnitude of gradient updated [default: 2]")
@@ -90,13 +90,13 @@ def get_training_args(a, a_upper, l):
                         help="torch seed to train model")
     parser.add_argument("--neg_slope", type=float, default=0.0,
                         help="torch seed to train model")
-    parser.add_argument("--lr_d", type=float, default=l,
+    parser.add_argument("--lr_d", type=float, default=l/2,
                         help="torch seed to train model")
-    parser.add_argument("--e_update_per_d", type=int, default=1,
+    parser.add_argument("--e_update_per_d", type=int, default=5,
                         help="torch seed to train model")
     parser.add_argument("--reverse_layer", type=bool, default=False,
                         help="torch seed to train model")
-    parser.add_argument("--flip_label", type=bool, default=False,
+    parser.add_argument("--flip_label", type=bool, default=True,
                         help="torch seed to train model")
     args = parser.parse_args()
     return args
@@ -111,9 +111,9 @@ def get_discriminator_args():
                         help="number of class labels [default: 2]")
     parser.add_argument("--stronger_dis", type=bool, default=False,
                         help="number of class labels [default: 2]")
-    parser.add_argument("--num_blocks_d", type=bool, default=1,
+    parser.add_argument("--num_blocks_d", type=bool, default=0,
                         help="number of class labels [default: 2]")
-    parser.add_argument("--num_blocks_d2", type=bool, default=1,
+    parser.add_argument("--num_blocks_d2", type=bool, default=2,
                         help="number of class labels [default: 2]")
     args = parser.parse_args()
     return args
@@ -141,9 +141,9 @@ def get_classifier_args():
                         help="number of class labels [default: 2]")
     parser.add_argument("--stronger_clas", type=bool, default=False,
                         help="number of class labels [default: 2]")
-    parser.add_argument("--num_blocks_c", type=bool, default=4,
+    parser.add_argument("--num_blocks_c", type=bool, default=0,
                         help="number of class labels [default: 2]")
-    parser.add_argument("--num_blocks_c2", type=bool, default=0,
+    parser.add_argument("--num_blocks_c2", type=bool, default=4,
                         help="number of class labels [default: 2]")
     args = parser.parse_args()
     return args
@@ -272,26 +272,29 @@ def train(extractor, classifier, discriminator, train_loader, val_loader, args, 
                 feature = extractor(x1)
                 class_scores = torch.squeeze(classifier(feature.detach()))
                 class_loss = loss_fcn(class_scores, y1)
+                optimizerC.zero_grad()
                 class_loss.backward()
                 torch.nn.utils.clip_grad_norm_(classifier.parameters(), args.clip_grad_norm_c)
                 optimizerC.step()
 
-                # discriminator
-                alpha = (args.alpha_upper - args.alpha)*e / args.max_epoch + args.alpha
-                domain_scores = torch.squeeze(discriminator(feature.detach(), alpha))
-                domain_loss = discriminator_loss_fcn(domain_scores, d1)
-                domain_loss.backward()
-                torch.nn.utils.clip_grad_norm_(discriminator.parameters(), args.clip_grad_norm_d)
-                optimizerD.step()
+                if t % args.e_update_per_d==0:
+                    # discriminator
+                    alpha = (args.alpha_upper - args.alpha)*e / args.max_epoch + args.alpha
+                    domain_scores = torch.squeeze(discriminator(feature.detach(), alpha))
+                    domain_loss = discriminator_loss_fcn(domain_scores, d1)
+                    optimizerD.zero_grad()
+                    domain_loss.backward()
+                    torch.nn.utils.clip_grad_norm_(discriminator.parameters(), args.clip_grad_norm_d)
+                    optimizerD.step()
 
-                # train encoder
+                # train encoder with x2, y2, d2
                 extractor.train()
                 classifier.eval()
                 discriminator.eval()
 
                 feature = extractor(x2)
                 domain_scores = torch.squeeze(discriminator(feature, alpha))
-                # d = (d-1) * -1 # flip the label
+                d = (d-1) * -1 # flip the label
                 domain_loss = discriminator_loss_fcn(domain_scores, d2)
 
                 class_scores = torch.squeeze(classifier(feature))
@@ -317,7 +320,7 @@ def train(extractor, classifier, discriminator, train_loader, val_loader, args, 
     return None
 
 def train_and_log(train_args, extractor_args, classifier_args, discriminator_args, data_args):
-    with wandb.init(project="msc_project", job_type=f"dann_{data_args.shift_type}_train4", config=train_args) as run:
+    with wandb.init(project="msc_project", job_type=f"dann_{data_args.shift_type}_train5", config=train_args) as run:
         config = wandb.config
         data = run.use_artifact('wav_dataset_exp001:latest')
         data_dir = data.download()
@@ -512,7 +515,7 @@ def evaluate(extractor, classifier, discriminator, test_loader, triain_args, dat
     return class_test_loss, class_test_acc, class_test_outputs
 
 def evaluate_and_log(data_args, triain_args, model_args=None, extractor_ver="latest", classifier_ver="latest", discrim_ver="latest"):
-    with wandb.init(project="msc_project", job_type=f"{data_args.shift_type}_eval4", config=model_args) as run:
+    with wandb.init(project="msc_project", job_type=f"dann_{data_args.shift_type}_eval5", config=model_args) as run:
         config = wandb.config
         data_config = vars(data_args)
         config.update(data_config)
@@ -615,8 +618,8 @@ def test_log(class_loss, domain_loss, class_acc, domain_acc, example_ct, epoch):
     print(f"domain_loss/accuracy after " + str(example_ct).zfill(5) + f" examples: {domain_loss:.3f}/{domain_acc:.3f}")
 
 if __name__ == "__main__":
-    alphas = [0.5]
-    a_uppers = [1.0]
+    alphas = [1.5]
+    a_uppers = [3.0]
     lrs = [0.00005]
     for a in alphas:
         for l in lrs:
