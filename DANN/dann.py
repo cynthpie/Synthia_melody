@@ -93,20 +93,12 @@ class Classifier(nn.Module):
             num_classes = 1
         else:
             num_classes = args.num_classes
-        if args.stronger_clas:
-            self.classifier = nn.Sequential(
-                nn.Conv1d(args.foc*4, args.foc*2, kernel_size=1, stride=1, padding=0, bias=False),
-                nn.LeakyReLU(inplace=True),
-                nn.BatchNorm1d(args.foc*2),
-                nn.Dropout(p=args.drop_out_rate_c),
-                nn.Conv1d(args.foc*2, num_classes, kernel_size=1, stride=1, padding=0, bias=False)
-            )
-        else:
-            self.classifier = nn.Sequential(
-                nn.Conv1d(args.foc*4, num_classes, kernel_size=1, stride=1, padding=0, bias=False)
-            )
+
         self.layer1 = self.make_layer(Resblock, args.foc*4, args.num_blocks_c2, stride = 1)
         self.layer2 = self.make_layer(Resblock, args.foc*2, args.num_blocks_c, stride = 1)
+        self.classifier = nn.Sequential(
+            nn.Conv1d(self.inchannel, num_classes, kernel_size=1, stride=1, padding=0, bias=False)
+        )
 
     def make_layer(self, block, channels, num_blocks, stride):
         if num_blocks == 0:
@@ -134,25 +126,11 @@ class Discriminator(nn.Module):
         else:
             num_domain = args.num_domain
         
-        if args.stronger_dis:
-            self.discriminator = nn.Sequential(
-                nn.Dropout(p=args.drop_out_rate_d),
-                nn.Conv1d(args.foc*4, args.foc*2, kernel_size=1, stride=1, padding=0, bias=False),
-                nn.BatchNorm1d(args.foc*2),
-                nn.LeakyReLU(inplace=True),
-                nn.Conv1d(args.foc*2, num_domain, kernel_size=1, stride=1, padding=0, bias=False)
-            )
-        else:
-            self.discriminator = nn.Sequential(
-                nn.Dropout(p=args.drop_out_rate_d),
-                nn.Conv1d(args.foc*2, args.foc*2, kernel_size=3, stride=3, padding=0, bias=False),
-                # nn.MaxPool1d(3),
-                # nn.Conv1d(args.foc*2, args.foc*2, kernel_size=3, stride=3, padding=0, bias=False),
-                #nn.MaxPool1d(3),
-                nn.Conv1d(args.foc*2, num_domain, kernel_size=1, stride=1, padding=0, bias=False)
-            )
         self.layer1 = self.make_layer(Resblock, args.foc*4, args.num_blocks_d2, stride = 1)
         self.layer2 = self.make_layer(Resblock, args.foc*2, args.num_blocks_d, stride = 1)
+        self.discriminator = nn.Sequential(
+            nn.Conv1d(self.inchannel, num_domain, kernel_size=1, stride=1, padding=0, bias=False),
+        )
 
     def make_layer(self, block, channels, num_blocks, stride):
         if num_blocks == 0:
