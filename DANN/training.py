@@ -52,7 +52,7 @@ def get_training_args(a, a_upper, l):
                         help='weight decay [default: 0.0]')
     parser.add_argument('--batch', type=int, default=64,
                         help='batch size [default: 64]')
-    parser.add_argument("--max_epoch", type=int, default=30,
+    parser.add_argument("--max_epoch", type=int, default=50,
                         help="max number of epoch for training")
     parser.add_argument("--min_epoch", type=int, default=15,
                         help="min number of epoch for training")
@@ -92,7 +92,7 @@ def get_training_args(a, a_upper, l):
                         help="torch seed to train model")
     parser.add_argument("--lr_d", type=float, default=l/2,
                         help="torch seed to train model")
-    parser.add_argument("--e_update_per_d", type=int, default=5,
+    parser.add_argument("--e_update_per_d", type=int, default=1,
                         help="torch seed to train model")
     parser.add_argument("--reverse_layer", type=bool, default=False,
                         help="torch seed to train model")
@@ -107,13 +107,17 @@ def get_discriminator_args():
                         help='out-channel of first Conv1D in SampleCNN [default: 64]')
     parser.add_argument("--num_domain", type=int, default=2,
                         help="number of domain in training and testing data [default: 2]")
-    parser.add_argument("--drop_out_rate_d", type=float, default=0.5,
+    parser.add_argument("--drop_out_rate_d", type=float, default=0.8,
                         help="number of class labels [default: 2]")
     parser.add_argument("--stronger_dis", type=bool, default=False,
                         help="number of class labels [default: 2]")
     parser.add_argument("--num_blocks_d", type=bool, default=0,
                         help="number of class labels [default: 2]")
-    parser.add_argument("--num_blocks_d2", type=bool, default=2,
+    parser.add_argument("--num_blocks_d2", type=bool, default=1,
+                        help="number of class labels [default: 2]")
+    parser.add_argument("--kernel_size", type=bool, default=10,
+                        help="number of class labels [default: 2]")
+    parser.add_argument("--stride", type=bool, default=10,
                         help="number of class labels [default: 2]")
     args = parser.parse_args()
     return args
@@ -151,22 +155,22 @@ def get_classifier_args():
 def build_and_log_model(extractor_args, classifier_args, discriminator_args):
     with wandb.init(project="msc_project", job_type="dann_initialize", config=extractor_args) as run:
         extractor = FeatureExtractor(extractor_args)
-        extractor_artifact = wandb.Artifact(
-            name="extractor", type="model",
-            description="extractor of DANN", 
-            metadata=vars(extractor_args))
-        torch.save(extractor.state_dict(), "initialized_extractor.pth")
-        extractor_artifact.add_file("initialized_extractor.pth")
-        run.log_artifact(extractor_artifact)
+        # extractor_artifact = wandb.Artifact(
+        #     name="extractor", type="model",
+        #     description="extractor of DANN", 
+        #     metadata=vars(extractor_args))
+        # torch.save(extractor.state_dict(), "initialized_extractor.pth")
+        # extractor_artifact.add_file("initialized_extractor.pth")
+        # run.log_artifact(extractor_artifact)
 
-        classifier = Classifier(classifier_args)
-        classifier_artifact = wandb.Artifact(
-            name="classifier", type="model",
-            description="classifier of DANN", 
-            metadata=vars(classifier_args))
-        torch.save(classifier.state_dict(), "initialized_classifier.pth")
-        classifier_artifact.add_file("initialized_classifier.pth")
-        run.log_artifact(classifier_artifact)
+        # classifier = Classifier(classifier_args)
+        # classifier_artifact = wandb.Artifact(
+        #     name="classifier", type="model",
+        #     description="classifier of DANN", 
+        #     metadata=vars(classifier_args))
+        # torch.save(classifier.state_dict(), "initialized_classifier.pth")
+        # classifier_artifact.add_file("initialized_classifier.pth")
+        # run.log_artifact(classifier_artifact)
 
         discriminator = Discriminator(discriminator_args)
         discriminator_artifact = wandb.Artifact(
@@ -221,11 +225,11 @@ def train(extractor, classifier, discriminator, train_loader, val_loader, args, 
             # define discriminator loss function
             if data_args.shift_type == "domain_shift":
                 weights = [data_args.shift_strength, 1-data_args.shift_strength]
-                loss_weights = torch.ones(len(d)).to(device=device)
+                loss_weights = torch.ones(len(d1)).to(device=device)
                 w = torch.tensor([weights[0]]).to(device=device)
                 loss_weights = loss_weights * w
                 loss_weights.to(device=device)
-                condition = torch.eq(d, torch.zeros(len(d)).to(device=device))
+                condition = torch.eq(d1, torch.zeros(len(d1)).to(device=device))
                 condition = condition.to(device=device)
                 w = torch.tensor([weights[1]])
                 w = w.to(device=device)
@@ -291,6 +295,22 @@ def train(extractor, classifier, discriminator, train_loader, val_loader, args, 
                 extractor.train()
                 classifier.eval()
                 discriminator.eval()
+
+                if data_args.shift_type == "domain_shift":
+                    weights = [data_args.shift_strength, 1-data_args.shift_strength]
+                    loss_weights = torch.ones(len(d2)).to(device=device)
+                    w = torch.tensor([weights[0]]).to(device=device)
+                    loss_weights = loss_weights * w
+                    loss_weights.to(device=device)
+                    condition = torch.eq(d2, torch.zeros(len(d2)).to(device=device))
+                    condition = condition.to(device=device)
+                    w = torch.tensor([weights[1]])
+                    w = w.to(device=device)
+                    loss_weights = loss_weights.where(condition, w)
+                    # loss_weights = torch.FloatTensor(loss_weights).to(device=device)
+                    discriminator_loss_fcn = nn.BCELoss(weight=loss_weights)
+                else:
+                    discriminator_loss_fcn = nn.BCELoss()
 
                 feature = extractor(x2)
                 domain_scores = torch.squeeze(discriminator(feature, alpha))
@@ -619,12 +639,12 @@ def test_log(class_loss, domain_loss, class_acc, domain_acc, example_ct, epoch):
 
 if __name__ == "__main__":
     alphas = [1.5]
-    a_uppers = [3.0]
+    a_uppers = [1.5]
     lrs = [0.00005]
     for a in alphas:
         for l in lrs:
             for a_upper in a_uppers:
-                data_args = get_data_args(shift_type="sample_selection_bias", shift_strength=1.0, shift_way=["sine", "square"],\
+                data_args = get_data_args(shift_type="sample_selection_bias", shift_strength=0.9, shift_way=["sine", "square"],\
                         waveshape=None)
                 extractor_args = get_extractor_args()
                 classifier_args = get_classifier_args()
