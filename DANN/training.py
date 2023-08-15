@@ -52,7 +52,7 @@ def get_training_args(a, a_upper, l):
                         help='weight decay [default: 0.0]')
     parser.add_argument('--batch', type=int, default=64,
                         help='batch size [default: 64]')
-    parser.add_argument("--max_epoch", type=int, default=50,
+    parser.add_argument("--max_epoch", type=int, default=90,
                         help="max number of epoch for training")
     parser.add_argument("--min_epoch", type=int, default=15,
                         help="min number of epoch for training")
@@ -98,6 +98,8 @@ def get_training_args(a, a_upper, l):
                         help="torch seed to train model")
     parser.add_argument("--flip_label", type=bool, default=True,
                         help="torch seed to train model")
+    parser.add_argument("--dropout_in_d_inut", type=bool, default=True,
+                        help="torch seed to train model")
     args = parser.parse_args()
     return args
 
@@ -107,17 +109,17 @@ def get_discriminator_args():
                         help='out-channel of first Conv1D in SampleCNN [default: 64]')
     parser.add_argument("--num_domain", type=int, default=2,
                         help="number of domain in training and testing data [default: 2]")
-    parser.add_argument("--drop_out_rate_d", type=float, default=0.8,
+    parser.add_argument("--drop_out_rate_d", type=float, default=0.9,
                         help="number of class labels [default: 2]")
     parser.add_argument("--stronger_dis", type=bool, default=False,
                         help="number of class labels [default: 2]")
-    parser.add_argument("--num_blocks_d", type=bool, default=0,
+    parser.add_argument("--num_blocks_d", type=bool, default=1,
                         help="number of class labels [default: 2]")
     parser.add_argument("--num_blocks_d2", type=bool, default=1,
                         help="number of class labels [default: 2]")
-    parser.add_argument("--kernel_size", type=bool, default=10,
+    parser.add_argument("--kernel_size", type=bool, default=22,
                         help="number of class labels [default: 2]")
-    parser.add_argument("--stride", type=bool, default=10,
+    parser.add_argument("--stride", type=bool, default=22,
                         help="number of class labels [default: 2]")
     args = parser.parse_args()
     return args
@@ -130,7 +132,7 @@ def get_extractor_args():
                         help="number of class labels [default: 2]")
     parser.add_argument("--remove_classifier", type=bool, default=True,
                         help="remove last convolution layer in the model for DANN [default: 2]")
-    parser.add_argument("--num_block_e", type=int, default=5,
+    parser.add_argument("--num_block_e", type=int, default=1,
                         help="remove last convolution layer in the model for DANN [default: 2]")
     args = parser.parse_args()
     return args
@@ -145,7 +147,7 @@ def get_classifier_args():
                         help="number of class labels [default: 2]")
     parser.add_argument("--stronger_clas", type=bool, default=False,
                         help="number of class labels [default: 2]")
-    parser.add_argument("--num_blocks_c", type=bool, default=0,
+    parser.add_argument("--num_blocks_c", type=bool, default=4,
                         help="number of class labels [default: 2]")
     parser.add_argument("--num_blocks_c2", type=bool, default=4,
                         help="number of class labels [default: 2]")
@@ -155,22 +157,22 @@ def get_classifier_args():
 def build_and_log_model(extractor_args, classifier_args, discriminator_args):
     with wandb.init(project="msc_project", job_type="dann_initialize", config=extractor_args) as run:
         extractor = FeatureExtractor(extractor_args)
-        # extractor_artifact = wandb.Artifact(
-        #     name="extractor", type="model",
-        #     description="extractor of DANN", 
-        #     metadata=vars(extractor_args))
-        # torch.save(extractor.state_dict(), "initialized_extractor.pth")
-        # extractor_artifact.add_file("initialized_extractor.pth")
-        # run.log_artifact(extractor_artifact)
+        extractor_artifact = wandb.Artifact(
+            name="extractor", type="model",
+            description="extractor of DANN", 
+            metadata=vars(extractor_args))
+        torch.save(extractor.state_dict(), "initialized_extractor.pth")
+        extractor_artifact.add_file("initialized_extractor.pth")
+        run.log_artifact(extractor_artifact)
 
-        # classifier = Classifier(classifier_args)
-        # classifier_artifact = wandb.Artifact(
-        #     name="classifier", type="model",
-        #     description="classifier of DANN", 
-        #     metadata=vars(classifier_args))
-        # torch.save(classifier.state_dict(), "initialized_classifier.pth")
-        # classifier_artifact.add_file("initialized_classifier.pth")
-        # run.log_artifact(classifier_artifact)
+        classifier = Classifier(classifier_args)
+        classifier_artifact = wandb.Artifact(
+            name="classifier", type="model",
+            description="classifier of DANN", 
+            metadata=vars(classifier_args))
+        torch.save(classifier.state_dict(), "initialized_classifier.pth")
+        classifier_artifact.add_file("initialized_classifier.pth")
+        run.log_artifact(classifier_artifact)
 
         discriminator = Discriminator(discriminator_args)
         discriminator_artifact = wandb.Artifact(
@@ -638,8 +640,8 @@ def test_log(class_loss, domain_loss, class_acc, domain_acc, example_ct, epoch):
     print(f"domain_loss/accuracy after " + str(example_ct).zfill(5) + f" examples: {domain_loss:.3f}/{domain_acc:.3f}")
 
 if __name__ == "__main__":
-    alphas = [1.5]
-    a_uppers = [1.5]
+    alphas = [1.6]
+    a_uppers = [1.6]
     lrs = [0.00005]
     for a in alphas:
         for l in lrs:

@@ -8,16 +8,27 @@ from torch.autograd import Function
 import argparse
 
 class Resblock(nn.Module):
-    def __init__(self, inchannel, outchannel, stride=1, drop_out_rate=0.2, kernel_size=3, padding=1):
+    def __init__(self, inchannel, outchannel, stride=1, drop_out_rate=0.2, kernel_size=3, padding=1, is_discriminator=False):
         super(Resblock, self).__init__()
-        self.left = nn.Sequential(
-            nn.Conv1d(inchannel, outchannel, kernel_size=kernel_size, stride=stride, padding=padding, bias=False),
-            nn.BatchNorm1d(outchannel),
-            nn.LeakyReLU(inplace=True),
-            nn.Dropout(p=drop_out_rate),
-            nn.Conv1d(outchannel, outchannel, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.BatchNorm1d(outchannel)
-        )
+        if is_discriminator:
+            self.left = nn.Sequential(
+                nn.Dropout(p=drop_out_rate), # add drop out to encoded feature
+                nn.Conv1d(inchannel, outchannel, kernel_size=kernel_size, stride=stride, padding=padding, bias=False),
+                nn.BatchNorm1d(outchannel),
+                nn.LeakyReLU(inplace=True),
+                nn.Dropout(p=0.5),
+                nn.Conv1d(outchannel, outchannel, kernel_size=3, stride=1, padding=1, bias=False),
+                nn.BatchNorm1d(outchannel)
+            )
+        else:
+            self.left = nn.Sequential(
+                nn.Conv1d(inchannel, outchannel, kernel_size=kernel_size, stride=stride, padding=padding, bias=False),
+                nn.BatchNorm1d(outchannel),
+                nn.LeakyReLU(inplace=True),
+                nn.Dropout(p=drop_out_rate),
+                nn.Conv1d(outchannel, outchannel, kernel_size=3, stride=1, padding=1, bias=False),
+                nn.BatchNorm1d(outchannel)
+            )
         self.shortcut=nn.Sequential()
         if stride != 1 or inchannel != outchannel:
             if kernel_size ==3 and stride==1:
@@ -134,23 +145,24 @@ class Discriminator(nn.Module):
             num_domain = args.num_domain
         
         self.layer1 = self.make_layer(Resblock, args.foc*4, args.num_blocks_d2, stride = args.stride, drop_out_rate=args.drop_out_rate_d,\
-            kernel_size=args.kernel_size)
+            kernel_size=args.kernel_size, is_discriminator=True)
         self.layer2 = self.make_layer(Resblock, args.foc*2, args.num_blocks_d, stride = args.stride, drop_out_rate=args.drop_out_rate_d,\
-            kernel_size=args.kernel_size)
+            kernel_size=args.kernel_size, is_discriminator=False)
         self.discriminator = nn.Sequential(
-            nn.Conv1d(self.inchannel, self.inchannel, kernel_size=3, stride=1, padding=0, bias=False),
-            # nn.MaxPool1d(3),
+            # nn.Conv1d(self.inchannel, self.inchannel//2, kernel_size=1, stride=1, padding=0, bias=False),
+            # nn.BatchNorm1d(self.inchannel//2),
+            # nn.LeakyReLU(inplace=True),
             nn.Conv1d(self.inchannel, num_domain, kernel_size=1, stride=1, padding=0, bias=False),
         )
 
-    def make_layer(self, block, channels, num_blocks, stride, drop_out_rate, kernel_size):
+    def make_layer(self, block, channels, num_blocks, stride, drop_out_rate, kernel_size, is_discriminator):
         if num_blocks == 0:
             return nn.Sequential()
         strides = [stride] + [1] * (num_blocks - 1)
         same_padding = 1
         layers = []
         for stride in strides:
-            layers.append(block(self.inchannel, channels, stride, drop_out_rate, kernel_size, same_padding))
+            layers.append(block(self.inchannel, channels, stride, drop_out_rate, kernel_size, same_padding, is_discriminator=True))
             self.inchannel = channels #match output channel to next input channel 
         return nn.Sequential(*layers)
     
@@ -179,17 +191,17 @@ def get_discriminator_args():
                         help='out-channel of first Conv1D in SampleCNN [default: 64]')
     parser.add_argument("--num_domain", type=int, default=2,
                         help="number of domain in training and testing data [default: 2]")
-    parser.add_argument("--drop_out_rate_d", type=float, default=0.8,
+    parser.add_argument("--drop_out_rate_d", type=float, default=0.85,
                         help="number of class labels [default: 2]")
     parser.add_argument("--stronger_dis", type=bool, default=False,
                         help="number of class labels [default: 2]")
-    parser.add_argument("--num_blocks_d", type=bool, default=0,
+    parser.add_argument("--num_blocks_d", type=bool, default=1,
                         help="number of class labels [default: 2]")
     parser.add_argument("--num_blocks_d2", type=bool, default=1,
                         help="number of class labels [default: 2]")
-    parser.add_argument("--kernel_size", type=bool, default=10,
+    parser.add_argument("--kernel_size", type=bool, default=22,
                         help="number of class labels [default: 2]")
-    parser.add_argument("--stride", type=bool, default=10,
+    parser.add_argument("--stride", type=bool, default=22,
                         help="number of class labels [default: 2]")
     args = parser.parse_args()
     return args
@@ -202,7 +214,7 @@ def get_extractor_args():
                         help="number of class labels [default: 2]")
     parser.add_argument("--remove_classifier", type=bool, default=True,
                         help="remove last convolution layer in the model for DANN [default: 2]")
-    parser.add_argument("--num_block_e", type=int, default=5,
+    parser.add_argument("--num_block_e", type=int, default=1,
                         help="remove last convolution layer in the model for DANN [default: 2]")
     args = parser.parse_args()
     return args
@@ -217,7 +229,7 @@ def get_classifier_args():
                         help="number of class labels [default: 2]")
     parser.add_argument("--stronger_clas", type=bool, default=False,
                         help="number of class labels [default: 2]")
-    parser.add_argument("--num_blocks_c", type=bool, default=0,
+    parser.add_argument("--num_blocks_c", type=bool, default=4,
                         help="number of class labels [default: 2]")
     parser.add_argument("--num_blocks_c2", type=bool, default=4,
                         help="number of class labels [default: 2]")
