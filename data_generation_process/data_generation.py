@@ -33,7 +33,7 @@ def wave_to_file(wav, wav2=None, fname="temp", amp=0.1, scale_type="major"):
             wavfile.write(f"../../audio/major_24/{fname}.wav", SR, wav)
         except FileNotFoundError:
             os.makedirs('../../audio/major_24/')
-            wavfile.write(f"../../audio/majorr_24/{fname}.wav", SR, wav)
+            wavfile.write(f"../../audio/major_24/{fname}.wav", SR, wav)
     elif scale_type == "minor": 
         try:
             wavfile.write(f"../../audio/minor_24/{fname}.wav", SR, wav)
@@ -294,4 +294,3 @@ if __name__ == "__main__":
         metadata_df = data_generation(scale_type="minor", serial_nb=f"{i:05d}", metadata_df=metadata_df)
         saved_path = "/rds/general/user/cl222/home/audio/metadata_24.csv" ## CHANGE ME
         # print(metadata_df)
-        metadata_df.to_csv(saved_path, sep='\t', index=False)
