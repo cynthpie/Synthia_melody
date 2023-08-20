@@ -68,6 +68,8 @@ def get_model_args():
                         help='out-channel of first Conv1D in SampleCNN [default: 64]')
     parser.add_argument("--num_classes", type=int, default=2,
                         help="number of class labels [default: 2]")
+    parser.add_argument("--remove_classifier", type=bool, default=False,
+                        help="remove last convolution layer in the model for DANN [default: 2]")
     args = parser.parse_args()
     return args
 
