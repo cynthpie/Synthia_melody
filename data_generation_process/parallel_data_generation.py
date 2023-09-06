@@ -315,7 +315,10 @@ def data_generation(one_metadata, seed):
     )
     
     # store to wav file
-    wav = gettrig(gen, amp_change[0]+amp_change[1]-amp_change[3]+4) # check
+    if args.amplitude=="increase":
+        wav = gettrig(gen, amp_change[0]+amp_change[1]-amp_change[3]+2) 
+    else:
+        wav = gettrig(gen, amp_change[0]+amp_change[1]-amp_change[3]+4) 
     wave_to_file(wav, fname=filename)
     return None
 
