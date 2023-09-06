@@ -20,27 +20,27 @@ import argparse
 def get_dgp_args():
     parser = argparse.ArgumentParser(description='data_args')
     parser.add_argument('--dataset_name', type=str, default="demo_train",
-                        help='type of dataset shift [default: None]')
+                        help='dataset name [default: demo_train]')
     parser.add_argument('--data_use', type=str, default="train",
-                        help='way to construct shift. [default: None]')
+                        help='"train" or "test". [default: train]')
     parser.add_argument('--nb_sample', type=int, default=10,
-                        help='strength of dataset shift [default: 0.0]')
+                        help='number of sample to generate [default: 10]')
     parser.add_argument('--waveshape', type=str, default="sine",
-                        help='way to construct shift. [default: None]')
+                        help='"sine", "square", "sawtooth", or "triangle" [default: sine]')
     parser.add_argument('--amplitude', type=str, default="stable",
-                        help='way to construct shift. [default: None]')
+                        help='"increase", "stable", or "decrease". [default: None]')
     parser.add_argument('--freq_lower', type=float, default=130.81,
-                        help='way to construct shift. [default: None]')   
+                        help='lowest frequency to generate. [default: 130.81 hz]')   
     parser.add_argument('--freq_upper', type=float, default=523.25,
-                        help='way to construct shift. [default: None]')                  
+                        help='highest frequency to generate. [default: 523.25 hz]')                  
     parser.add_argument('--major_prop', type=float, default=0.5,
-                        help='way to construct shift. [default: None]')
+                        help='proportion of major sample in generated data. [default: 0.5]')
     parser.add_argument('--nb_cpu', type=float, default=2,
-                        help='way to construct shift. [default: None]')
+                        help='number of cpu to generate data. [default: 2]')
     parser.add_argument('--seed', type=float, default=0,
-                        help='way to construct shift. [default: None]')
+                        help='random seed to determine the random melody sample. [default: 0]')
     parser.add_argument('--noise_level', type=float, default=0.0,
-                        help='way to construct shift. [default: None]')
+                        help='proportion of sample exposed to label noise. [default: 0.0]')
     args = parser.parse_args()
     return args
 
