@@ -14,16 +14,37 @@ from synth.components.oscillators.oscillators import SineOscillator, SquareOscil
 from synth.components.envelopes import ADSREnvelope
 from synth.components.freqencymod import FrequencyModulator
 from joblib import Parallel, delayed
+import argparse
 
-# CHANGE ME
-DATASET_NAME = "sawtooth_test" ## CHANGE ME, e.g. triangle_train, square_test
-SHAPE = "sawtooth"
-DATA_USE = "test" # e.g. "train" or "test"
-SR = 16000 # sample rate #16000
-SEED = 55000 # train seed=0, test seed=55000
-# set seeds
-random.seed(SEED)
-np.random.seed(SEED)
+
+def get_dgp_args():
+    parser = argparse.ArgumentParser(description='data_args')
+    parser.add_argument('--dataset_name', type=str, default="demo_train",
+                        help='type of dataset shift [default: None]')
+    parser.add_argument('--data_use', type=str, default="train",
+                        help='way to construct shift. [default: None]')
+    parser.add_argument('--nb_sample', type=int, default=10,
+                        help='strength of dataset shift [default: 0.0]')
+    parser.add_argument('--waveshape', type=str, default="sine",
+                        help='way to construct shift. [default: None]')
+    parser.add_argument('--amplitude', type=str, default="stable",
+                        help='way to construct shift. [default: None]')
+    parser.add_argument('--freq_lower', type=float, default=130.81,
+                        help='way to construct shift. [default: None]')   
+    parser.add_argument('--freq_upper', type=float, default=523.25,
+                        help='way to construct shift. [default: None]')                  
+    parser.add_argument('--major_prop', type=float, default=0.5,
+                        help='way to construct shift. [default: None]')
+    parser.add_argument('--nb_cpu', type=float, default=2,
+                        help='way to construct shift. [default: None]')
+    parser.add_argument('--seed', type=float, default=0,
+                        help='way to construct shift. [default: None]')
+    parser.add_argument('--noise_level', type=float, default=0.0,
+                        help='way to construct shift. [default: None]')
+    args = parser.parse_args()
+    return args
+
+SR = 16000
 
 MAJOR_FREQ = {
     "C_":261.6256, 
@@ -72,10 +93,10 @@ def wave_to_file(wav, wav2=None, fname="temp", amp=0.1):
         wav2 = to_16(wav2, amp)
         wav = np.stack([wav, wav2]).T
     try:
-        wavfile.write(f"../../audio/{DATASET_NAME}/{fname}.wav", SR, wav)
+        wavfile.write(f"../../audio/{args.dataset_name}/{fname}.wav", SR, wav)
     except FileNotFoundError:
-        os.makedirs(f'../../audio/{DATASET_NAME}/')
-        wavfile.write(f"../../audio/{DATASET_NAME}/{fname}.wav", SR, wav)
+        os.makedirs(f'../../audio/{args.dataset_name}/')
+        wavfile.write(f"../../audio/{args.dataset_name}/{fname}.wav", SR, wav)
 
 def amp_mod(init_amp, env):
     return env * init_amp
@@ -110,7 +131,7 @@ def get_octive(freq, freq_range):
 
 ##########################################################################
 # generate metadata file
-def generate_metadata_file(nb_sample, major_prop, bias, bias_type, bias_strength, controlling_factors, noise_level, data_use):
+def generate_metadata_file(nb_sample, major_prop, controlling_factors, noise_level, data_use):
     """ 
     Args:  
         - nb_sample (int): number of samples to generate 
@@ -149,22 +170,8 @@ def generate_metadata_file(nb_sample, major_prop, bias, bias_type, bias_strength
     freq_range = controlling_factors["freq_range"]
     freq_ranges = [freq_range] * nb_sample
 
-    # assign bias
-    if bias_strength >0:
-        biases = [bias_type[s] for s in scales] # factor of correlation. CHANGE if needed
-        nb_biased_sample = int(nb_sample * bias_strength)
-        nb_unbiased_sample = nb_sample - nb_biased_sample
-        unbiased_index = random.choices(range(nb_sample), k=nb_unbiased_sample)
-        new_biases = [controlling_factors[bias] if i in unbiased_index else biases[i] for i in range(nb_sample)]
 
-        if bias=="wave_shape":
-            wave_shapes = new_biases
-        elif bias=="amplitude":
-            amplitude = new_biases
-        else:
-            freq_range = new_biases
-
-    # assign noise
+    # assign label noise
     nb_noise_sample = int(nb_sample * noise_level)
     nb_clean_sample = nb_sample - nb_noise_sample
     noise_index = random.choices(range(nb_sample), k=nb_noise_sample)
@@ -313,16 +320,16 @@ def data_generation(one_metadata, seed):
     return None
 
 if __name__ == "__main__":
-    FREQ_RANGE = (130.81, 523.25)
-    NB_SAMPLE = 10000
+    args = get_dgp_args()
 
-    # define constants
-    metadata_df = generate_metadata_file(nb_sample=NB_SAMPLE, major_prop=0.5, bias="wave_shape", 
-            bias_type = {"major":"square", "minor":"sine"}, bias_strength=0.0, noise_level = 0.0,
-            controlling_factors={"amplitude":"stable", "freq_range": FREQ_RANGE, "wave_shape":SHAPE},
-            data_use=DATA_USE)
-    saved_path = f"/rds/general/user/cl222/home/audio/metadata_{DATASET_NAME}.csv"
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    freq_range = [args.freq_lower, args.freq_upper]
+    metadata_df = generate_metadata_file(nb_sample=args.nb_sample, major_prop=args.major_prop, noise_level = args.noise_level,
+            controlling_factors={"amplitude":args.amplitude, "freq_range": freq_range, "wave_shape":args.waveshape},
+            data_use=args.data_use)
+    saved_path = f"/rds/general/user/cl222/home/audio/metadata_{args.dataset_name}.csv"
     metadata_df.to_csv(saved_path)
     print(metadata_df)
-    Parallel(n_jobs=200)(delayed(data_generation)(metadata_df.iloc(0)[i], seed) for (i, seed) in zip(range(NB_SAMPLE), range(SEED, NB_SAMPLE+SEED)))
-    # data_generation(metadata_df.iloc(0)[1])
+    Parallel(n_jobs=args.nb_cpu)(delayed(data_generation)(metadata_df.iloc(0)[i], seed) for (i, seed) in zip(range(args.nb_sample), \
+        range(args.seed, args.nb_sample + args.seed)))
