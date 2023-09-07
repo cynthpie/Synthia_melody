@@ -8,6 +8,8 @@ To generate data, run "parallel_data_generation.py" in the folder "data_generati
   1. The metadata.csv. The csv file contains filenames of the generated audio and their sampled music key label in 24 major/minor keys. Major keys are denoted with uppercase and minor keys are in lowercase letters.
   2. A folder containing the generated audio file. The audios are in the form of ```.wav``` file and have a sample rate of 16000 Hz.
 
+
+### Data generation parameters
 The parameters of the data generation mechanism are:
 - nb_sample: number of sample to generate.
 - waveshape: can be "sine", "square", "sawtooth", "triangle". Different waveshape results in different music timbre.
