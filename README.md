@@ -1,6 +1,10 @@
 # Synthia's melody
 An audio-data generation mechanism for distribution shifts. 
 
+Example usage:
+<img width="991" alt="synthia_chart" src="https://github.com/cynthpie/msc_project/assets/134090009/27656d33-f67c-45e1-b0bb-3a21b490007a">
+
+
 ### Data generation
 To generate data, run "parallel_data_generation.py" in the folder "data_generation". Change the argparse setting to the desired configuration. 
 - Ex. run ```python parallel_data_generation.py --nb_sample="5" --waveshape="square" --amplitude="stable"```.
