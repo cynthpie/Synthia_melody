@@ -9,7 +9,7 @@ To generate data, run "parallel_data_generation.py" in the folder "data_generati
   2. A folder containing the generated audio file. The audios are in the form of ```.wav``` file and have a sample rate of 16000 Hz.
 
 
-### Data generation parameters
+### Parameters
 The parameters of the data generation mechanism are:
 - nb_sample: number of sample to generate.
 - waveshape: can be "sine", "square", "sawtooth", "triangle". Different waveshape results in different music timbre.
