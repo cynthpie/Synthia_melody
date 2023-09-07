@@ -22,3 +22,4 @@ The parameters of the data generation mechanism are:
 - freq_upper: the highest frequency (pitch) to generate in Hz.
 - major_prop: proportion of major keys in the generation data. 
 - noise_level: proportion of samples exposed to label noise. e.g. samples without all 7 notes of its key shown in melody.
+- seed: random seed to generate melody samples 
