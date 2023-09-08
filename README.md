@@ -1,8 +1,9 @@
 # Synthia's melody
-An audio-data generation mechanism for distribution shifts. 
+An audio data generation mechanism for distribution shifts. 
 
 Example usage:
-<img width="991" alt="synthia_chart" src="https://github.com/cynthpie/msc_project/assets/134090009/27656d33-f67c-45e1-b0bb-3a21b490007a">
+<img width="1157" alt="synthia_chart" src="https://github.com/cynthpie/msc_project/assets/134090009/f946b0cc-36a2-4596-bd22-b9d73261b2c3">
+
 
 
 ### Data generation
