@@ -5,6 +5,9 @@ Example usage:
 <img width="1157" alt="synthia_chart" src="https://github.com/cynthpie/msc_project/assets/134090009/f946b0cc-36a2-4596-bd22-b9d73261b2c3">
 
 
+### Environment setup
+Run ```conda env create -f conda-environment.yaml```
+
 
 ### Data generation
 To generate data, run "parallel_data_generation.py" in the folder "data_generation". Change the argparse setting to the desired configuration. 
