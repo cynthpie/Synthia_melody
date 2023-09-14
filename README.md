@@ -2,10 +2,10 @@
 An audio data generation mechanism for distribution shifts. 
 
 Example usage:
-<img width="1157" alt="synthia_chart" src="https://github.com/cynthpie/msc_project/assets/134090009/f946b0cc-36a2-4596-bd22-b9d73261b2c3">
-
+<img width="1157" alt="synthia_chart" src="https://github.com/cynthpie/Synthia_melody/assets/134090009/eee814a1-78f9-4476-8d9e-8b0ad6e5af36">
 
 ### Environment setup
+
 Run ```conda env create -f conda-environment.yaml```
 
 
