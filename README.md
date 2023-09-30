@@ -1,5 +1,5 @@
 # Synthia's melody
-An audio data generation mechanism for distribution shifts. 
+An audio data generation mechanism for distribution shifts. The corresponding preprint is available at https://arxiv.org/abs/2309.15024v1.
 
 Example usage:
 <img width="1157" alt="synthia_chart" src="https://github.com/cynthpie/Synthia_melody/assets/134090009/eee814a1-78f9-4476-8d9e-8b0ad6e5af36">
